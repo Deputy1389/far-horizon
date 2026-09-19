@@ -195,7 +195,7 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('keyup',e=>keys[e.code]=false);
 document.addEventListener('mousemove',e=>{
   if(!pointerLocked)return;
-  yaw-=e.movementX*.0023; pitch-=e.movementY*.0018; pitch=THREE.MathUtils.clamp(pitch,-.7,.35);
+  yaw-=e.movementX*.0023; pitch-=e.movementY*.0018; pitch=THREE.MathUtils.clamp(pitch,-1.05,1.22);
 });
 document.addEventListener('pointerlockchange',()=>pointerLocked=document.pointerLockElement===renderer.domElement);
 renderer.domElement.addEventListener('mousedown',e=>{ if(!pointerLocked){renderer.domElement.requestPointerLock();return;} if(e.button===0) fire(); });
