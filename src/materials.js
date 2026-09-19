@@ -1,4 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
+import { DDSLoader } from 'https://unpkg.com/three@0.180.0/examples/jsm/loaders/DDSLoader.js';
 
 function seeded(seed=1){
   let s=seed>>>0;
@@ -200,9 +201,31 @@ function makeShip(){
   },2,2);
 }
 
-export function createMaterialLibrary(renderer){
+async function loadLocalSwgTextures(prep){
+  let manifest;
+  try{
+    const response=await fetch('./assets/local-swg/manifest.json',{cache:'no-store'});
+    if(!response.ok)return null;
+    manifest=await response.json();
+  }catch{return null;}
+  const loader=new DDSLoader();
+  const result={};
+  const entries=Object.entries(manifest.assets||{});
+  await Promise.all(entries.map(([role,url])=>new Promise(resolve=>{
+    loader.load(url,tex=>{
+      tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+      tex.colorSpace=role.toLowerCase().includes('normal')?THREE.NoColorSpace:THREE.SRGBColorSpace;
+      prep(tex);result[role]=tex;resolve();
+    },undefined,()=>resolve());
+  })));
+  return Object.keys(result).length?result:null;
+}
+
+export async function createMaterialLibrary(renderer){
   const maxAniso=Math.min(8,renderer.capabilities.getMaxAnisotropy());
   const prep=(t)=>{ if(t){t.anisotropy=maxAniso;t.needsUpdate=true;} return t; };
+  const local=await loadLocalSwgTextures(prep);
+
   const sand=makeSand(); prep(sand.map); prep(sand.bump);
   const rock=prep(makeRock());
   const road=prep(makeRoad());
@@ -211,34 +234,78 @@ export function createMaterialLibrary(renderer){
   const pad=prep(makePad());
   const facadeCache=new Map();
 
+  const terrainMap=local?.sand||sand.map;
+  const terrainNormal=local?.sandNormal||null;
+  if(local?.sand){terrainMap.repeat.set(42,42);}
+  if(terrainNormal){terrainNormal.repeat.set(42,42);}
+  const wallA=local?.wall||null;
+  const wallB=local?.capitalWall||wallA;
+  const floor=local?.floor||null;
+  const concrete=local?.concrete||null;
+  const metalMap=local?.metal||metal;
+
+  function localClone(tex,repeat=2){
+    if(!tex)return null;
+    const t=tex.clone();t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(repeat,repeat);prep(t);return t;
+  }
+
   function building(hex){
     const key=Number(hex);
     if(facadeCache.has(key))return facadeCache.get(key);
-    const sideTex=prep(makeFacade(key,4000+key%997));
-    const roofTex=prep(makeRoof(key,7000+key%991));
-    const side=new THREE.MeshStandardMaterial({map:sideTex,color:0xffffff,roughness:.94,metalness:.01,bumpMap:sideTex,bumpScale:.12});
-    const roof=new THREE.MeshStandardMaterial({map:roofTex,color:0xe0d2bb,roughness:.98,metalness:.01,bumpMap:roofTex,bumpScale:.1});
-    // BoxGeometry material order: +x,-x,+y,-y,+z,-z
+    const useSwg=!!wallA;
+    const source=(key%2===0?wallA:wallB)||wallA;
+    const sideTex=useSwg?localClone(source,2.2):prep(makeFacade(key,4000+key%997));
+    const roofTex=floor?localClone(floor,2.4):prep(makeRoof(key,7000+key%991));
+    const side=new THREE.MeshStandardMaterial({
+      map:sideTex,
+      color:useSwg?new THREE.Color(hex).lerp(new THREE.Color(0xffffff),.72):0xffffff,
+      roughness:.93,
+      metalness:.01,
+    });
+    const roof=new THREE.MeshStandardMaterial({
+      map:roofTex,
+      color:floor?0xbca98e:0xe0d2bb,
+      roughness:.98,
+      metalness:.01,
+    });
     const arr=[side,side,roof,roof,side,side];
     facadeCache.set(key,arr);
     return arr;
   }
 
   return {
-    terrain:new THREE.MeshStandardMaterial({map:sand.map,color:0xffffff,roughness:1,metalness:0,bumpMap:sand.bump,bumpScale:2.1}),
-    rock:new THREE.MeshStandardMaterial({map:rock,color:0xffffff,roughness:.96,metalness:.02,bumpMap:rock,bumpScale:.45}),
+    usesSwgAssets:!!local,
+    swgAssetCount:local?Object.keys(local).length:0,
+    terrain:new THREE.MeshStandardMaterial({
+      map:terrainMap,
+      color:local?.sand?0xd0a16f:0xffffff,
+      roughness:1,
+      metalness:0,
+      normalMap:terrainNormal,
+      normalScale:terrainNormal?new THREE.Vector2(.7,.7):undefined,
+      bumpMap:terrainNormal?null:sand.bump,
+      bumpScale:terrainNormal?0:2.1
+    }),
+    rock:new THREE.MeshStandardMaterial({
+      map:concrete?localClone(concrete,2.5):rock,
+      color:concrete?0x806854:0xffffff,
+      roughness:.96,
+      metalness:.02
+    }),
     building,
     roadTexture:road,
-    metal:new THREE.MeshStandardMaterial({map:metal,color:0xd1d1ca,metalness:.68,roughness:.48}),
-    antenna:new THREE.MeshStandardMaterial({map:metal,color:0x55504a,metalness:.75,roughness:.42}),
-    ship:new THREE.MeshStandardMaterial({map:ship,color:0xc0c7c8,metalness:.78,roughness:.38,bumpMap:ship,bumpScale:.08}),
-    pad:new THREE.MeshStandardMaterial({map:pad,color:0xc2b9a9,metalness:.3,roughness:.72}),
+    metal:new THREE.MeshStandardMaterial({map:metalMap,color:local?.metal?0xb1aaa0:0xd1d1ca,metalness:.68,roughness:.48}),
+    antenna:new THREE.MeshStandardMaterial({map:metalMap,color:0x55504a,metalness:.75,roughness:.42}),
+    ship:new THREE.MeshStandardMaterial({map:local?.metal?metalMap:ship,color:0xc0c7c8,metalness:.78,roughness:.38,bumpMap:local?.metal?null:ship,bumpScale:.08}),
+    pad:new THREE.MeshStandardMaterial({map:local?.floor?localClone(floor,3):pad,color:local?.floor?0x8f8778:0xc2b9a9,metalness:.3,roughness:.72}),
     roadMaterial(w,d){
-      const tex=road.clone();
+      const base=local?.floor||road;
+      const tex=base.clone();
+      tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
       tex.repeat.set(Math.max(1,w/18),Math.max(1,d/18));
       tex.anisotropy=maxAniso;tex.needsUpdate=true;
-      return new THREE.MeshStandardMaterial({map:tex,color:0xb8aa98,roughness:.98,metalness:.02,bumpMap:tex,bumpScale:.08});
+      return new THREE.MeshStandardMaterial({map:tex,color:local?.floor?0x72695f:0xb8aa98,roughness:.98,metalness:.02,bumpMap:local?.floor?null:tex,bumpScale:.08});
     },
-    terminal:new THREE.MeshStandardMaterial({map:metal,color:0x74716a,metalness:.62,roughness:.46}),
+    terminal:new THREE.MeshStandardMaterial({map:metalMap,color:0x74716a,metalness:.62,roughness:.46}),
   };
 }
