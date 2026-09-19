@@ -1,6 +1,7 @@
 import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
 import { CharacterState, RESOURCE_CATALOG } from './systems.js';
 import { createSystemsUI } from './ui.js';
+import { createMaterialLibrary } from './materials.js';
 
 const character = new CharacterState();
 
@@ -32,7 +33,11 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 document.getElementById('game').appendChild(renderer.domElement);
+
+const materials = createMaterialLibrary(renderer);
 
 scene.add(new THREE.HemisphereLight(0xffd7aa, 0x554738, 2.1));
 const sun = new THREE.DirectionalLight(0xffd2a0, 3.6);
@@ -67,14 +72,12 @@ function buildTerrain() {
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) p.setY(i, terrainHeight(p.getX(i), p.getZ(i)));
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ color: 0xa86e43, roughness: 1, metalness: 0 });
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, materials.terrain);
   mesh.receiveShadow = true;
   scene.add(mesh);
 
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6e4833, roughness: 1 });
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 260);
+  const rocks = new THREE.InstancedMesh(rockGeo, materials.rock, 260);
   const m = new THREE.Matrix4();
   for (let i = 0; i < 260; i++) {
     const x = rrange(-1550, 1550), z = rrange(-1550, 1550);
@@ -91,9 +94,8 @@ const blockers = [];
 const buildingMeshes = [];
 function addBox(x,z,w,d,h,color, yOffset=0) {
   const geo = new THREE.BoxGeometry(w,h,d);
-  const mat = new THREE.MeshStandardMaterial({ color, roughness:.87, metalness:.05 });
   const y = terrainHeight(x,z) + h/2 + yOffset;
-  const mesh = new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, materials.building(color));
   mesh.position.set(x,y,z);
   mesh.castShadow = true; mesh.receiveShadow = true;
   scene.add(mesh);
@@ -104,8 +106,7 @@ function addBox(x,z,w,d,h,color, yOffset=0) {
 
 function addRoad(x,z,w,d,rot=0) {
   const g = new THREE.PlaneGeometry(w,d); g.rotateX(-Math.PI/2);
-  const m = new THREE.MeshStandardMaterial({color:0x6b5543, roughness:1});
-  const road = new THREE.Mesh(g,m);
+  const road = new THREE.Mesh(g,materials.roadMaterial(w,d));
   road.position.set(x, terrainHeight(x,z)+.25, z); road.rotation.y=rot; road.receiveShadow=true; scene.add(road);
 }
 
@@ -131,7 +132,7 @@ function buildCity() {
         blockers.pop();
       }
       if (rand()>.7) {
-        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(.6,.8,rrange(10,30),6), new THREE.MeshStandardMaterial({color:0x443f3a,metalness:.6,roughness:.5}));
+        const antenna = new THREE.Mesh(new THREE.CylinderGeometry(.6,.8,rrange(10,30),6), materials.antenna);
         antenna.position.set(x, terrainHeight(x,z)+h+8, z); scene.add(antenna);
       }
     }
@@ -141,13 +142,13 @@ function buildCity() {
   const port = addBox(0,0,190,190,52,0x827769);
   const tower = addBox(0,0,64,64,165,0x6d6860,52/2);
   blockers.pop();
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(105,8,10,48), new THREE.MeshStandardMaterial({color:0x55565b,metalness:.65,roughness:.35}));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(105,8,10,48), materials.metal);
   ring.rotation.x=Math.PI/2; ring.position.set(0,terrainHeight(0,0)+95,0); ring.castShadow=true; scene.add(ring);
 
   // Landing pads and grounded ships.
   for (let i=0;i<8;i++) {
     const a=i/8*Math.PI*2, rad=rrange(270,430), x=Math.cos(a)*rad,z=Math.sin(a)*rad;
-    const pad=new THREE.Mesh(new THREE.CylinderGeometry(45,45,2,32),new THREE.MeshStandardMaterial({color:0x56504a,metalness:.25,roughness:.75}));
+    const pad=new THREE.Mesh(new THREE.CylinderGeometry(45,45,2,32),materials.pad);
     pad.position.set(x,terrainHeight(x,z)+1,z); scene.add(pad);
     if(i%2===0) addShip(x,terrainHeight(x,z)+9,z,a+Math.PI/2,rrange(.7,1.15));
   }
@@ -161,10 +162,9 @@ function buildCity() {
 
 function addShip(x,y,z,rot=0,scale=1){
   const group=new THREE.Group();
-  const mat=new THREE.MeshStandardMaterial({color:0x4f5559,metalness:.75,roughness:.35});
-  const body=new THREE.Mesh(new THREE.BoxGeometry(30,6,70),mat); group.add(body);
-  const wing=new THREE.Mesh(new THREE.BoxGeometry(68,2.5,26),mat); wing.position.z=5; group.add(wing);
-  const nose=new THREE.Mesh(new THREE.ConeGeometry(8,22,6),mat); nose.rotation.x=Math.PI/2; nose.position.z=-45; group.add(nose);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(30,6,70),materials.ship); group.add(body);
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(68,2.5,26),materials.ship); wing.position.z=5; group.add(wing);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(8,22,6),materials.ship); nose.rotation.x=Math.PI/2; nose.position.z=-45; group.add(nose);
   group.position.set(x,y,z); group.rotation.y=rot; group.scale.setScalar(scale); group.traverse(o=>{if(o.isMesh)o.castShadow=true}); scene.add(group); return group;
 }
 
@@ -268,7 +268,7 @@ ui.startButton.addEventListener('click',()=>{
 const interactionPoints=[];
 function addTerminal(x,z,color,type,label){
   const group=new THREE.Group();
-  const base=new THREE.Mesh(new THREE.BoxGeometry(7,8,7),new THREE.MeshStandardMaterial({color:0x383838,metalness:.45,roughness:.4}));
+  const base=new THREE.Mesh(new THREE.BoxGeometry(7,8,7),materials.terminal);
   base.position.y=4; group.add(base);
   const screen=new THREE.Mesh(new THREE.BoxGeometry(4.8,2.3,.45),new THREE.MeshStandardMaterial({color:0x222222,emissive:color,emissiveIntensity:2}));
   screen.position.set(0,5.2,-3.7); group.add(screen);
