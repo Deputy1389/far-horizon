@@ -1,5 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
-import { DDSLoader } from 'https://unpkg.com/three@0.180.0/examples/jsm/loaders/DDSLoader.js';
+import { DDSLoader } from 'https://esm.sh/three@0.180.0/examples/jsm/loaders/DDSLoader.js';
 
 function seeded(seed=1){
   let s=seed>>>0;
