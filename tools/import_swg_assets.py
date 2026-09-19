@@ -84,33 +84,48 @@ def read_tre_index(tre_path: Path):
         if not record_count or record_count > 2_000_000 or not toc_size or not name_size:
             return None
 
+        # The client-side SearchTree implementation always materializes
+        # exactly 24 bytes per TOC entry, including v0006 ("6000" on disk).
+        # For an uncompressed TOC it reads record_count * 24 bytes and places
+        # the name block immediately after that span. header.sizeOfTOC is only
+        # the stored/compressed size used when the TOC itself is compressed.
+        toc_uncompressed_size = record_count * 24
+
         f.seek(toc_offset)
-        toc_packed = f.read(toc_size)
-        if len(toc_packed) != toc_size:
-            return None
-        toc = inflate_maybe(toc_packed, toc_comp)
+        if toc_comp:
+            toc_packed = f.read(toc_size)
+            if len(toc_packed) != toc_size:
+                return None
+            toc = inflate_maybe(toc_packed, toc_comp)
+            name_block_offset = toc_offset + toc_size
+        else:
+            toc = f.read(toc_uncompressed_size)
+            if len(toc) != toc_uncompressed_size:
+                return None
+            name_block_offset = toc_offset + toc_uncompressed_size
 
-        f.seek(toc_offset + toc_size)
-        name_packed = f.read(name_size)
-        if len(name_packed) != name_size:
+        # Some community tools can recover archives with trailing TOC slack,
+        # but the first 24 bytes per record are the actual SearchTree entry.
+        if len(toc) < toc_uncompressed_size:
             return None
-        names = inflate_maybe(name_packed, name_comp)
+        toc = toc[:toc_uncompressed_size]
 
-        # Verified SWG archives use 24-byte CRC-first records. Restoration's
-        # 6000 archives append 8 bytes of padding, giving a 32-byte stride.
-        stride = len(toc) // record_count
-        if stride not in (24, 32):
-            expected = 32 if version == "6000" else 24
-            if len(toc) >= record_count * expected:
-                stride = expected
-            elif len(toc) >= record_count * 24:
-                stride = 24
-            else:
+        f.seek(name_block_offset)
+        if name_comp:
+            name_packed = f.read(name_size)
+            if len(name_packed) != name_size:
+                return None
+            names = inflate_maybe(name_packed, name_comp)
+        else:
+            # The stock client reads the uncompressed name block by its
+            # uncompressed size, not necessarily header.sizeOfNameBlock.
+            names = f.read(name_uncompressed)
+            if len(names) != name_uncompressed:
                 return None
 
         entries = {}
         for i in range(record_count):
-            off = i * stride
+            off = i * 24
             if off + 24 > len(toc):
                 break
 
@@ -234,7 +249,11 @@ def main() -> int:
         versions[archive["version"]] = versions.get(archive["version"], 0) + 1
 
         if len(sample_paths) < 8:
-            sample_paths.extend([p for p in entries if p.startswith("texture/")][: 8 - len(sample_paths)])
+            texture_samples=[p for p in entries if p.startswith("texture/")]
+            if texture_samples:
+                sample_paths.extend(texture_samples[: 8 - len(sample_paths)])
+            elif not sample_paths:
+                sample_paths.extend(list(entries)[:8])
 
         by_basename: dict[str, list[str]] = {}
         for archive_path in entries:
@@ -270,7 +289,7 @@ def main() -> int:
             except Exception as exc:
                 print(f"  {tre_path.name}: {exc}")
     elif not matches and sample_paths:
-        print("Example texture paths found in the client:")
+        print("Example internal paths found in the client:")
         for p in sample_paths:
             print(f"  {p}")
 
