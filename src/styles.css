@@ -1,6 +1,7 @@
-html, body, #game { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111; }
-body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f0eadf; }
+html, body, #game { width:100%; height:100%; margin:0; overflow:hidden; background:#111; }
+body { font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#f0eadf; }
 canvas { display:block; }
+button { font:inherit; }
 #hud { position:fixed; inset:0; pointer-events:none; text-shadow:0 1px 3px #000; }
 #brand { position:absolute; top:22px; left:24px; display:flex; flex-direction:column; gap:2px; letter-spacing:.08em; }
 #brand strong { font-size:17px; }
@@ -10,11 +11,65 @@ canvas { display:block; }
 #status div { display:flex; justify-content:space-between; gap:12px; padding:7px 9px; background:rgba(18,16,14,.56); border:1px solid rgba(255,255,255,.12); }
 #status span { font-size:9px; letter-spacing:.12em; opacity:.55; }
 #status b { font-size:11px; font-weight:600; }
-#help { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-size:11px; opacity:.75; background:rgba(18,16,14,.55); padding:7px 10px; border:1px solid rgba(255,255,255,.1); }
+#characterHud { position:absolute; left:24px; bottom:62px; width:330px; padding:10px 12px; background:rgba(18,16,14,.64); border:1px solid rgba(255,255,255,.12); }
+.healthLine { display:grid; grid-template-columns:46px 1fr 62px; align-items:center; gap:8px; }
+.healthLine span { font-size:9px; letter-spacing:.1em; opacity:.6; }
+.healthLine b { font-size:10px; text-align:right; }
+.healthTrack { height:7px; background:rgba(255,255,255,.12); overflow:hidden; }
+.healthTrack i { display:block; height:100%; width:100%; background:#9f4f43; transition:width .15s; }
+.metaLine { display:flex; justify-content:space-between; margin-top:8px; font-size:10px; opacity:.85; }
+.metaLine span { opacity:.72; }
+#systemsKeys { position:absolute; bottom:20px; left:24px; font-size:10px; opacity:.68; background:rgba(18,16,14,.55); padding:7px 9px; border:1px solid rgba(255,255,255,.1); }
+#help { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-size:10px; opacity:.7; background:rgba(18,16,14,.55); padding:7px 10px; border:1px solid rgba(255,255,255,.1); }
 #crosshair { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:20px; font-weight:200; opacity:.8; }
-#toast { position:absolute; left:50%; top:62%; transform:translateX(-50%); font-size:13px; padding:8px 12px; opacity:0; transition:opacity .2s; background:rgba(18,16,14,.68); border:1px solid rgba(255,255,255,.14); }
-#startCard { pointer-events:auto; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(560px, calc(100vw - 48px)); padding:28px 30px; background:rgba(20,18,16,.88); border:1px solid rgba(255,255,255,.18); box-shadow:0 24px 100px rgba(0,0,0,.5); backdrop-filter:blur(14px); }
+#toast { position:absolute; left:50%; top:62%; transform:translateX(-50%); font-size:13px; padding:8px 12px; opacity:0; transition:opacity .2s; background:rgba(18,16,14,.78); border:1px solid rgba(255,255,255,.14); }
+#interactionPrompt { position:absolute; left:50%; top:54%; transform:translateX(-50%); font-size:11px; padding:6px 9px; opacity:0; background:rgba(18,16,14,.72); border:1px solid rgba(255,255,255,.12); }
+#startCard { pointer-events:auto; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(600px,calc(100vw - 48px)); padding:28px 30px; background:rgba(20,18,16,.92); border:1px solid rgba(255,255,255,.18); box-shadow:0 24px 100px rgba(0,0,0,.5); backdrop-filter:blur(14px); }
 #startCard h1 { margin:0 0 8px; font-size:34px; letter-spacing:.06em; text-transform:uppercase; }
 #startCard p { margin:9px 0; color:#cfc6b7; line-height:1.5; font-size:14px; }
-#startCard button { margin-top:14px; border:0; padding:11px 16px; font-weight:700; background:#dfc291; color:#201a13; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
+#startCard button, #panelRoot button { border:0; padding:9px 13px; font-weight:700; background:#dfc291; color:#201a13; cursor:pointer; text-transform:uppercase; letter-spacing:.06em; font-size:11px; }
+#startCard button { margin-top:14px; padding:11px 16px; }
 #startCard.hidden { display:none; }
+#panelRoot { display:none; pointer-events:auto; position:absolute; right:24px; top:145px; bottom:74px; width:min(520px,calc(100vw - 48px)); background:rgba(22,20,18,.95); border:1px solid rgba(255,255,255,.16); box-shadow:0 18px 70px rgba(0,0,0,.45); backdrop-filter:blur(14px); text-shadow:none; }
+#panelRoot.open { display:flex; flex-direction:column; }
+.panelHead { flex:0 0 auto; padding:18px 18px 14px; border-bottom:1px solid rgba(255,255,255,.1); display:flex; justify-content:space-between; gap:20px; }
+.panelHead h2 { margin:0; font-size:20px; letter-spacing:.05em; text-transform:uppercase; }
+.panelHead p { margin:4px 0 0; font-size:11px; color:#a9a198; line-height:1.45; }
+#panelRoot .panelClose { background:transparent; color:#e8ded2; font-size:22px; padding:0 4px; }
+.panelBody { overflow:auto; padding:16px 18px 22px; }
+.panelBody section { margin-bottom:20px; }
+.panelBody h3 { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#cbb795; margin:0 0 9px; }
+.panelBody p { color:#bdb5aa; font-size:12px; line-height:1.45; }
+.muted { opacity:.65; }
+.inventoryGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+.itemCard, .resourceCard, .skillCard, .recipeCard, .missionCard, .shopRow, .activeMission, .callout { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.035); }
+.itemCard { padding:10px; display:flex; flex-direction:column; gap:5px; }
+.itemCard b { font-size:11px; }
+.itemCard strong { font-size:15px; color:#dfc291; }
+.resourceList, .skillTrack, .recipeList { display:grid; gap:7px; }
+.resourceCard { padding:10px; }
+.resourceCard>div:first-child { display:grid; grid-template-columns:12px 1fr; column-gap:8px; }
+.resourceCard i { width:10px; height:10px; border-radius:50%; margin-top:3px; }
+.resourceCard b { font-size:12px; }
+.resourceCard small { grid-column:2; color:#9e978d; }
+.statChips { margin-top:8px; display:flex; gap:5px; flex-wrap:wrap; }
+.statChips span { font-size:9px; padding:3px 5px; background:rgba(255,255,255,.06); text-transform:capitalize; }
+.skillCard, .recipeCard, .missionCard, .shopRow { padding:11px; display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.skillCard.trained { border-color:rgba(183,211,160,.35); }
+.skillCard b, .recipeCard b, .missionCard b, .shopRow b { display:block; font-size:12px; }
+.skillCard small, .shopRow small { display:block; color:#8f887f; font-size:9px; margin-bottom:3px; }
+.skillCard p, .recipeCard p, .missionCard p { margin:4px 0; font-size:11px; }
+.skillCard em { font-style:normal; font-size:9px; color:#9e978d; }
+.trainedMark { color:#b7d3a0; font-size:18px; }
+#panelRoot button:disabled { cursor:not-allowed; opacity:.32; }
+.requirements { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+.requirements span { padding:3px 5px; font-size:9px; background:rgba(255,255,255,.05); }
+.requirements .enough { color:#b7d3a0; }
+.requirements .short { color:#d6937f; }
+.upgradeStrip { margin-top:14px; padding:10px; display:flex; justify-content:space-between; background:rgba(223,194,145,.08); font-size:11px; }
+.activeMission { padding:14px; }
+.activeMission h3 { color:#f0eadf; font-size:16px; margin:5px 0; }
+.progress { height:7px; background:rgba(255,255,255,.08); margin:12px 0 6px; }
+.progress i { display:block; height:100%; background:#dfc291; }
+.callout { padding:10px; margin-bottom:12px; font-size:11px; color:#cbbfb0; }
+.shopRow { margin-bottom:7px; }
