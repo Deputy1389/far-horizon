@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Far Horizon — First Slice</title>
+  <title>Far Horizon — Systems Slice</title>
   <link rel="stylesheet" href="./src/styles.css" />
 </head>
 <body>
@@ -11,21 +11,33 @@
   <div id="hud">
     <div id="brand">
       <strong>FAR HORIZON</strong>
-      <span>procedural frontier slice · seed <b id="seedLabel"></b></span>
+      <span>systems sandbox slice · seed <b id="seedLabel"></b></span>
     </div>
-    <div id="objective">Reach the city, scan a resource deposit, and clear a patrol drone.</div>
+
+    <div id="objective">Live in the world: survey, harvest, fight, craft, train and take contracts.</div>
+
     <div id="status">
       <div><span>LOCATION</span><b id="locationLabel">South Ridge</b></div>
       <div><span>SCAN</span><b id="scanLabel">Ready</b></div>
       <div><span>DRONES</span><b id="droneLabel">0 / 0</b></div>
     </div>
-    <div id="help">WASD move · Shift sprint · Mouse look · Click fire · Q survey pulse · R reseed world</div>
+
+    <div id="characterHud">
+      <div class="healthLine"><span>HEALTH</span><div class="healthTrack"><i id="healthFill"></i></div><b id="healthText">100 / 100</b></div>
+      <div class="metaLine"><b id="creditsText">250 cr</b><span id="xpText">Combat 0 · Scout 0 · Craft 0</span></div>
+    </div>
+
+    <div id="interactionPrompt"></div>
+    <div id="systemsKeys">I inventory · K skills · C crafting · M missions · H sample · E interact · 1 medkit · B camp</div>
+    <div id="help">WASD move · Shift sprint · Mouse look · Click fire · Q survey · R reseed</div>
     <div id="crosshair">+</div>
     <div id="toast"></div>
+    <div id="panelRoot"></div>
+
     <div id="startCard">
       <h1>Far Horizon</h1>
-      <p>A first playable proof for the “SWG-scale sandbox on procedural worlds” idea.</p>
-      <p>You are standing on a ridge outside Keshar, a generated desert spaceport. The city core, industrial belt, outskirts, traffic and resource field are all built from one deterministic seed.</p>
+      <p>This slice now tests the systems side of the idea: profession XP, training, material-quality resources, surveying, hand sampling, crafting, contracts, salvage, vendors, combat damage, medkits, camps and persistent character progression.</p>
+      <p>Your character save persists in this browser. The generated world is still a prototype, but the underlying loops are now connected.</p>
       <button id="startButton">Enter world</button>
     </div>
   </div>
