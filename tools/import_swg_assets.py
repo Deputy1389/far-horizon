@@ -53,15 +53,85 @@ def candidate_roots(explicit: str | None) -> list[Path]:
     return found
 
 
-def inflate_maybe(data: bytes, kind: int) -> bytes:
-    if kind == 0:
-        return data
-    if kind == 2:
+def _zlib_decompress(data: bytes) -> bytes:
+    try:
+        return zlib.decompress(data)
+    except zlib.error:
+        return zlib.decompress(data, -zlib.MAX_WBITS)
+
+
+def _looks_like_zlib(data: bytes) -> bool:
+    if len(data) < 2:
+        return False
+    cmf, flg = data[0], data[1]
+    return (cmf & 0x0F) == 8 and (cmf >> 4) <= 7 and (((cmf << 8) | flg) % 31) == 0 and not (flg & 0x20)
+
+
+def decode_toc(raw: bytes, compressor: int, record_count: int):
+    """Mirror SWG's SearchTree/Nuna TOC recovery behavior."""
+    attempts = []
+    if compressor != 0:
         try:
-            return zlib.decompress(data)
-        except zlib.error:
-            return zlib.decompress(data, -zlib.MAX_WBITS)
-    raise ValueError(f"Unsupported TRE compression type {kind}")
+            attempts.append(_zlib_decompress(raw))
+        except Exception:
+            pass
+        attempts.append(raw)
+    else:
+        attempts.append(raw)
+        if _looks_like_zlib(raw):
+            try:
+                attempts.append(_zlib_decompress(raw))
+            except Exception:
+                pass
+
+    for blob in attempts:
+        if not blob or record_count <= 0:
+            continue
+
+        if len(blob) % record_count == 0:
+            stride = len(blob) // record_count
+            if stride >= 24:
+                return blob, stride
+
+        # Community v0006 archives can include trailing slack. Trim to a
+        # uniform row layout, but never below the 24-byte SearchTree entry.
+        trimmed = len(blob) - (len(blob) % record_count)
+        if trimmed >= record_count * 24:
+            stride = trimmed // record_count
+            if stride >= 24:
+                return blob[:trimmed], stride
+
+    return None
+
+
+def decode_name_block(raw: bytes, compressor: int, uncompressed_size: int):
+    """Mirror SWG's name-block decode with conservative fallbacks."""
+    if uncompressed_size <= 0:
+        return None
+
+    if compressor != 0:
+        try:
+            decoded = _zlib_decompress(raw)
+            if len(decoded) >= uncompressed_size:
+                return decoded[:uncompressed_size]
+        except Exception:
+            pass
+        if len(raw) == uncompressed_size:
+            return raw
+        return None
+
+    if len(raw) >= uncompressed_size:
+        return raw[:uncompressed_size]
+
+    if _looks_like_zlib(raw):
+        try:
+            decoded = _zlib_decompress(raw)
+            if len(decoded) >= uncompressed_size:
+                return decoded[:uncompressed_size]
+        except Exception:
+            pass
+
+    return None
 
 
 def read_tre_index(tre_path: Path):
@@ -70,78 +140,67 @@ def read_tre_index(tre_path: Path):
         if len(header) != 36:
             return None
 
-        # SWG TREE archives are written little-endian. Stock archives usually
-        # contain the bytes b"EERT" (the LE dump of the 'TREE' tag).
         if header[:4] not in (b"EERT", b"TREE"):
             return None
 
         raw_version = header[4:8].decode("ascii", errors="ignore")
-        version = raw_version if raw_version in {"0004", "0005", "0006", "5000", "6000"} else raw_version[::-1]
+        version = raw_version if raw_version in {"4000", "5000", "6000", "0004", "0005", "0006"} else raw_version[::-1]
 
         record_count, toc_offset, toc_comp, toc_size, name_comp, name_size, name_uncompressed = struct.unpack_from(
             "<7I", header, 8
         )
-        if not record_count or record_count > 2_000_000 or not toc_size or not name_size:
+        if not record_count or record_count > 2_000_000 or not toc_size or not name_uncompressed:
             return None
 
-        # The client-side SearchTree implementation always materializes
-        # exactly 24 bytes per TOC entry, including v0006 ("6000" on disk).
-        # For an uncompressed TOC it reads record_count * 24 bytes and places
-        # the name block immediately after that span. header.sizeOfTOC is only
-        # the stored/compressed size used when the TOC itself is compressed.
-        toc_uncompressed_size = record_count * 24
-
+        # SearchTree reads exactly header.sizeOfTOC bytes from tocOffset.
         f.seek(toc_offset)
-        if toc_comp:
-            toc_packed = f.read(toc_size)
-            if len(toc_packed) != toc_size:
-                return None
-            toc = inflate_maybe(toc_packed, toc_comp)
-            name_block_offset = toc_offset + toc_size
-        else:
-            toc = f.read(toc_uncompressed_size)
-            if len(toc) != toc_uncompressed_size:
-                return None
-            name_block_offset = toc_offset + toc_uncompressed_size
-
-        # Some community tools can recover archives with trailing TOC slack,
-        # but the first 24 bytes per record are the actual SearchTree entry.
-        if len(toc) < toc_uncompressed_size:
+        toc_on_disk = f.read(toc_size)
+        if len(toc_on_disk) != toc_size:
             return None
-        toc = toc[:toc_uncompressed_size]
 
+        decoded_toc = decode_toc(toc_on_disk, toc_comp, record_count)
+        if not decoded_toc:
+            return None
+        toc_blob, stride = decoded_toc
+
+        # Name block begins after the STORED TOC bytes, regardless of whether
+        # the TOC expands to a larger uncompressed buffer.
+        name_block_offset = toc_offset + toc_size
         f.seek(name_block_offset)
-        if name_comp:
-            name_packed = f.read(name_size)
-            if len(name_packed) != name_size:
-                return None
-            names = inflate_maybe(name_packed, name_comp)
-        else:
-            # The stock client reads the uncompressed name block by its
-            # uncompressed size, not necessarily header.sizeOfNameBlock.
-            names = f.read(name_uncompressed)
-            if len(names) != name_uncompressed:
-                return None
+        name_read_size = name_size if name_comp != 0 else name_uncompressed
+        name_on_disk = f.read(name_read_size)
+        if len(name_on_disk) != name_read_size:
+            return None
+
+        names = decode_name_block(name_on_disk, name_comp, name_uncompressed)
+        if names is None:
+            return None
 
         entries = {}
+        valid_rows = 0
         for i in range(record_count):
-            off = i * 24
-            if off + 24 > len(toc):
+            off = i * stride
+            if off + 24 > len(toc_blob):
                 break
 
             _crc, uncompressed_size, file_offset, compression, compressed_size, name_offset = struct.unpack_from(
-                "<6I", toc, off
+                "<6I", toc_blob, off
             )
             if name_offset >= len(names):
                 continue
 
             end = names.find(b"\x00", name_offset)
             if end == -1:
-                end = len(names)
+                continue
 
             virtual_path = names[name_offset:end].decode("utf-8", errors="ignore")
             virtual_path = virtual_path.replace("\\", "/").strip("/").lower()
-            if not virtual_path:
+
+            # Reject obviously corrupt name offsets instead of letting garbage
+            # strings collapse thousands of rows into a misleading dictionary.
+            if not virtual_path or len(virtual_path) > 512:
+                continue
+            if any(ord(ch) < 32 for ch in virtual_path):
                 continue
 
             entries[virtual_path] = {
@@ -150,6 +209,7 @@ def read_tre_index(tre_path: Path):
                 "compression": compression,
                 "compressed_size": compressed_size,
             }
+            valid_rows += 1
 
         if not entries:
             return None
@@ -157,6 +217,11 @@ def read_tre_index(tre_path: Path):
         return {
             "version": version,
             "entries": entries,
+            "record_count": record_count,
+            "valid_rows": valid_rows,
+            "stride": stride,
+            "toc_compressor": toc_comp,
+            "name_compressor": name_comp,
         }
 
 def copy_loose(root: Path, virtual_path: str, destination: Path) -> bool:
@@ -182,7 +247,7 @@ def extract_from_tre(tre_path: Path, entry: dict, destination: Path) -> bool:
             f.seek(entry["file_offset"])
             stored_size = entry["compressed_size"] if entry["compression"] else entry["uncompressed_size"]
             packed = f.read(stored_size)
-        data = inflate_maybe(packed, entry["compression"])
+        data = _zlib_decompress(packed) if entry["compression"] else packed
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(data)
         return True
@@ -227,7 +292,10 @@ def main() -> int:
 
     parsed_archives = 0
     parsed_entries = 0
+    parsed_valid_rows = 0
     versions: dict[str, int] = {}
+    strides: dict[int, int] = {}
+    compressors: dict[str, int] = {}
     sample_paths: list[str] = []
 
     # Search all archives. Later files are allowed to replace earlier matches,
@@ -245,8 +313,12 @@ def main() -> int:
 
         parsed_archives += 1
         entries = archive["entries"]
-        parsed_entries += len(entries)
+        parsed_entries += archive.get("record_count", len(entries))
+        parsed_valid_rows += archive.get("valid_rows", len(entries))
         versions[archive["version"]] = versions.get(archive["version"], 0) + 1
+        strides[archive.get("stride", 24)] = strides.get(archive.get("stride", 24), 0) + 1
+        comp_key = f'toc{archive.get("toc_compressor", "?")}/name{archive.get("name_compressor", "?")}'
+        compressors[comp_key] = compressors.get(comp_key, 0) + 1
 
         if len(sample_paths) < 8:
             texture_samples=[p for p in entries if p.startswith("texture/")]
@@ -276,7 +348,9 @@ def main() -> int:
 
     print(
         f"Parsed {parsed_archives}/{len(tre_files)} TRE archives "
-        f"({parsed_entries:,} file records; versions {versions or 'none'})."
+        f"({parsed_entries:,} TOC rows; {parsed_valid_rows:,} valid paths; "
+        f"versions {versions or 'none'}; strides {strides or 'none'}; "
+        f"compression {compressors or 'none'})."
     )
 
     if parsed_archives == 0:
@@ -288,7 +362,7 @@ def main() -> int:
                 print(f"  {tre_path.name}: {head!r} / {head.hex(' ')}")
             except Exception as exc:
                 print(f"  {tre_path.name}: {exc}")
-    elif not matches and sample_paths:
+    if sample_paths:
         print("Example internal paths found in the client:")
         for p in sample_paths:
             print(f"  {p}")
