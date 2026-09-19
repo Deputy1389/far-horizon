@@ -71,3 +71,25 @@ Fixed camera-relative movement and expanded vertical aim range.
 ### 0.1.0
 
 First procedural terrain/city, third-person controls, drones and survey proof.
+
+
+## Using original SWG client textures
+
+Far Horizon can use a curated set of original SWG DDS textures from a **local SWG Restoration/client installation**. The original stock environment textures live in the client's TRE archives, so they are imported locally and are deliberately excluded from this Git repository.
+
+After pulling the latest code, run:
+
+```powershell
+cd $HOME\far-horizon
+py tools\import_swg_assets.py
+```
+
+The importer auto-detects common `SWG Restoration` install locations. If yours is elsewhere:
+
+```powershell
+py tools\import_swg_assets.py --source "D:\Games\SWG Restoration"
+```
+
+It currently looks for a small Tatooine-oriented set including the original sand, structure wall/floor, concrete and industrial metal DDS textures. The browser build automatically detects `assets/local-swg/manifest.json` and uses the imported DDS files; if the manifest is absent, it falls back to the procedural prototype materials.
+
+Imported SWG files live under `assets/local-swg/` and are gitignored.
