@@ -121,6 +121,7 @@ function buildCity() {
     const count = Math.max(1, Math.floor(2 + density*6 + rand()*3));
     for (let j=0;j<count;j++) {
       const x=cx+rrange(-50,50), z=cz+rrange(-50,50);
+      if (Math.hypot(x-130,z-25)<55 || Math.hypot(x+130,z-25)<55) continue;
       const w=rrange(22,55), d=rrange(20,52);
       const h=rrange(12,32) * (1+density*2.5);
       const palette=[0xbda477,0x987a5b,0xc2b18b,0x8f7968,0xb58f66];
@@ -175,6 +176,33 @@ function buildSkyTraffic(){
   }
 }
 const traffic=[];
+
+const crowd=[];
+function buildCrowd(){
+  const geo=new THREE.CapsuleGeometry(.65,1.6,3,6);
+  const mat=new THREE.MeshStandardMaterial({color:0x74695f,roughness:1});
+  for(let i=0;i<72;i++){
+    const a=rrange(0,Math.PI*2),rad=rrange(150,760);
+    const x=Math.cos(a)*rad,z=Math.sin(a)*rad;
+    const agent=new THREE.Mesh(geo,mat);
+    agent.position.set(x,terrainHeight(x,z)+1.8,z);
+    agent.castShadow=true;
+    agent.userData.dir=rrange(0,Math.PI*2);
+    agent.userData.turn=rrange(2,7);
+    scene.add(agent);crowd.push(agent);
+  }
+}
+function updateCrowd(dt){
+  for(const a of crowd){
+    a.userData.turn-=dt;
+    if(a.userData.turn<=0){a.userData.dir+=rrange(-1.1,1.1);a.userData.turn=rrange(2,7);}
+    const nx=a.position.x+Math.sin(a.userData.dir)*dt*2.2;
+    const nz=a.position.z+Math.cos(a.userData.dir)*dt*2.2;
+    const r=Math.hypot(nx,nz);
+    if(r>820||r<120||collides(nx,nz)){a.userData.dir+=Math.PI*.7;continue;}
+    a.position.x=nx;a.position.z=nz;a.position.y=terrainHeight(nx,nz)+1.8;a.rotation.y=a.userData.dir+Math.PI;
+  }
+}
 
 const player = new THREE.Group();
 const bodyMat=new THREE.MeshStandardMaterial({color:0x2c3131,roughness:.8});
@@ -518,6 +546,7 @@ function updateWorld(t,dt){
       campHealTimer=0; character.heal(3);
     }
   }
+  updateCrowd(dt);
   updatePrompt();
   if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)ui.toast.style.opacity=0;}
 }
@@ -527,7 +556,7 @@ function addAtmosphere(){
   const moon=new THREE.Mesh(new THREE.SphereGeometry(28,18,12),new THREE.MeshBasicMaterial({color:0xf1c88f})); moon.position.set(-850,440,-2300); scene.add(moon);
 }
 
-buildTerrain(); buildCity(); buildSkyTraffic(); buildHubs(); buildResourceMeshes(); spawnDrones(); addAtmosphere();
+buildTerrain(); buildCity(); buildSkyTraffic(); buildCrowd(); buildHubs(); buildResourceMeshes(); spawnDrones(); addAtmosphere();
 player.position.set(40,terrainHeight(40,1150),1150);
 
 const clock=new THREE.Clock();
