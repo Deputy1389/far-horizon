@@ -37,7 +37,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 document.getElementById('game').appendChild(renderer.domElement);
 
-const materials = createMaterialLibrary(renderer);
+const materials = await createMaterialLibrary(renderer);
 
 scene.add(new THREE.HemisphereLight(0xffd7aa, 0x554738, 2.1));
 const sun = new THREE.DirectionalLight(0xffd2a0, 3.6);
