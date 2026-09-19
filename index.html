@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Far Horizon — First Slice</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <div id="game"></div>
+  <div id="hud">
+    <div id="brand">
+      <strong>FAR HORIZON</strong>
+      <span>procedural frontier slice · seed <b id="seedLabel"></b></span>
+    </div>
+    <div id="objective">Reach the city, scan a resource deposit, and clear a patrol drone.</div>
+    <div id="status">
+      <div><span>LOCATION</span><b id="locationLabel">South Ridge</b></div>
+      <div><span>SCAN</span><b id="scanLabel">Ready</b></div>
+      <div><span>DRONES</span><b id="droneLabel">0 / 0</b></div>
+    </div>
+    <div id="help">WASD move · Shift sprint · Mouse look · Click fire · Q survey pulse · R reseed world</div>
+    <div id="crosshair">+</div>
+    <div id="toast"></div>
+    <div id="startCard">
+      <h1>Far Horizon</h1>
+      <p>A first playable proof for the “SWG-scale sandbox on procedural worlds” idea.</p>
+      <p>You are standing on a ridge outside Keshar, a generated desert spaceport. The city core, industrial belt, outskirts, traffic and resource field are all built from one deterministic seed.</p>
+      <button id="startButton">Enter world</button>
+    </div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
