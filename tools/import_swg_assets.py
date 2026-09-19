@@ -57,7 +57,10 @@ def inflate_maybe(data: bytes, kind: int) -> bytes:
     if kind == 0:
         return data
     if kind == 2:
-        return zlib.decompress(data)
+        try:
+            return zlib.decompress(data)
+        except zlib.error:
+            return zlib.decompress(data, -zlib.MAX_WBITS)
     raise ValueError(f"Unsupported TRE compression type {kind}")
 
 
@@ -67,9 +70,13 @@ def read_tre_index(tre_path: Path):
         if len(header) != 36:
             return None
 
-        magic, = struct.unpack_from("<I", header, 0)
-        if magic != 0x54524545:
+        # SWG TREE archives are written little-endian. Stock archives usually
+        # contain the bytes b"EERT" (the LE dump of the 'TREE' tag).
+        if header[:4] not in (b"EERT", b"TREE"):
             return None
+
+        raw_version = header[4:8].decode("ascii", errors="ignore")
+        version = raw_version if raw_version in {"0004", "0005", "0006", "5000", "6000"} else raw_version[::-1]
 
         record_count, toc_offset, toc_comp, toc_size, name_comp, name_size, name_uncompressed = struct.unpack_from(
             "<7I", header, 8
@@ -78,12 +85,28 @@ def read_tre_index(tre_path: Path):
             return None
 
         f.seek(toc_offset)
-        toc = inflate_maybe(f.read(toc_size), toc_comp)
-        names = inflate_maybe(f.read(name_size), name_comp)
-
-        stride = len(toc) // record_count
-        if stride < 24:
+        toc_packed = f.read(toc_size)
+        if len(toc_packed) != toc_size:
             return None
+        toc = inflate_maybe(toc_packed, toc_comp)
+
+        f.seek(toc_offset + toc_size)
+        name_packed = f.read(name_size)
+        if len(name_packed) != name_size:
+            return None
+        names = inflate_maybe(name_packed, name_comp)
+
+        # Verified SWG archives use 24-byte CRC-first records. Restoration's
+        # 6000 archives append 8 bytes of padding, giving a 32-byte stride.
+        stride = len(toc) // record_count
+        if stride not in (24, 32):
+            expected = 32 if version == "6000" else 24
+            if len(toc) >= record_count * expected:
+                stride = expected
+            elif len(toc) >= record_count * 24:
+                stride = 24
+            else:
+                return None
 
         entries = {}
         for i in range(record_count):
@@ -101,9 +124,9 @@ def read_tre_index(tre_path: Path):
             if end == -1:
                 end = len(names)
 
-            try:
-                virtual_path = names[name_offset:end].decode("utf-8", errors="ignore").replace("\\", "/").lower()
-            except Exception:
+            virtual_path = names[name_offset:end].decode("utf-8", errors="ignore")
+            virtual_path = virtual_path.replace("\\", "/").strip("/").lower()
+            if not virtual_path:
                 continue
 
             entries[virtual_path] = {
@@ -113,8 +136,13 @@ def read_tre_index(tre_path: Path):
                 "compressed_size": compressed_size,
             }
 
-        return entries
+        if not entries:
+            return None
 
+        return {
+            "version": version,
+            "entries": entries,
+        }
 
 def copy_loose(root: Path, virtual_path: str, destination: Path) -> bool:
     candidate = root.joinpath(*virtual_path.split("/"))
@@ -122,6 +150,14 @@ def copy_loose(root: Path, virtual_path: str, destination: Path) -> bool:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(candidate.read_bytes())
         return True
+
+    # Restoration can place overrides in nested patch/mod folders.
+    wanted = Path(virtual_path).name.lower()
+    for loose in root.rglob("*"):
+        if loose.is_file() and loose.name.lower() == wanted:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(loose.read_bytes())
+            return True
     return False
 
 
@@ -129,7 +165,8 @@ def extract_from_tre(tre_path: Path, entry: dict, destination: Path) -> bool:
     try:
         with tre_path.open("rb") as f:
             f.seek(entry["file_offset"])
-            packed = f.read(entry["compressed_size"])
+            stored_size = entry["compressed_size"] if entry["compression"] else entry["uncompressed_size"]
+            packed = f.read(stored_size)
         data = inflate_maybe(packed, entry["compression"])
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(data)
@@ -167,30 +204,88 @@ def main() -> int:
             pending.pop(role)
             print(f"loose  {virtual_path}")
 
-    tre_files = sorted(source.rglob("*.tre"), key=lambda p: str(p).lower())
+    tre_files = sorted(
+        [p for p in source.rglob("*") if p.is_file() and p.suffix.lower() == ".tre"],
+        key=lambda p: str(p).lower(),
+    )
     print(f"Scanning {len(tre_files)} TRE archives for {len(pending)} texture(s)...")
 
-    for tre_path in tre_files:
-        if not pending:
-            break
+    parsed_archives = 0
+    parsed_entries = 0
+    versions: dict[str, int] = {}
+    sample_paths: list[str] = []
 
+    # Search all archives. Later files are allowed to replace earlier matches,
+    # which approximates the client's patch/override behavior.
+    matches: dict[str, tuple[Path, dict, str]] = {}
+
+    for tre_path in tre_files:
         try:
-            index = read_tre_index(tre_path)
-        except Exception:
-            index = None
-        if not index:
+            archive = read_tre_index(tre_path)
+        except Exception as exc:
+            archive = None
+
+        if not archive:
             continue
 
-        for role, virtual_path in list(pending.items()):
-            entry = index.get(virtual_path.lower())
-            if not entry:
-                continue
+        parsed_archives += 1
+        entries = archive["entries"]
+        parsed_entries += len(entries)
+        versions[archive["version"]] = versions.get(archive["version"], 0) + 1
 
-            destination = texture_root / Path(virtual_path).name
-            if extract_from_tre(tre_path, entry, destination):
-                found[role] = f"./assets/local-swg/texture/{destination.name}"
-                pending.pop(role)
-                print(f"TRE    {virtual_path} <- {tre_path.name}")
+        if len(sample_paths) < 8:
+            sample_paths.extend([p for p in entries if p.startswith("texture/")][: 8 - len(sample_paths)])
+
+        by_basename: dict[str, list[str]] = {}
+        for archive_path in entries:
+            by_basename.setdefault(Path(archive_path).name.lower(), []).append(archive_path)
+
+        for role, virtual_path in pending.items():
+            exact = virtual_path.lower()
+            matched_path = exact if exact in entries else None
+
+            # Restoration/patch archives occasionally move an asset while
+            # retaining its original basename. Use basename matching as a
+            # conservative fallback.
+            if matched_path is None:
+                candidates = by_basename.get(Path(exact).name.lower(), [])
+                if len(candidates) == 1:
+                    matched_path = candidates[0]
+
+            if matched_path is not None:
+                matches[role] = (tre_path, entries[matched_path], matched_path)
+
+    print(
+        f"Parsed {parsed_archives}/{len(tre_files)} TRE archives "
+        f"({parsed_entries:,} file records; versions {versions or 'none'})."
+    )
+
+    if parsed_archives == 0:
+        print("No TRE archive could be parsed. First 4 bytes/version diagnostics:")
+        for tre_path in tre_files[:8]:
+            try:
+                with tre_path.open("rb") as f:
+                    head = f.read(8)
+                print(f"  {tre_path.name}: {head!r} / {head.hex(' ')}")
+            except Exception as exc:
+                print(f"  {tre_path.name}: {exc}")
+    elif not matches and sample_paths:
+        print("Example texture paths found in the client:")
+        for p in sample_paths:
+            print(f"  {p}")
+
+    for role, virtual_path in list(pending.items()):
+        match = matches.get(role)
+        if not match:
+            continue
+
+        tre_path, entry, matched_path = match
+        destination = texture_root / Path(virtual_path).name
+        if extract_from_tre(tre_path, entry, destination):
+            found[role] = f"./assets/local-swg/texture/{destination.name}"
+            pending.pop(role)
+            suffix = "" if matched_path == virtual_path.lower() else f" ({matched_path})"
+            print(f"TRE    {virtual_path}{suffix} <- {tre_path.name}")
 
     manifest = {
         "source": "local SWG client",
