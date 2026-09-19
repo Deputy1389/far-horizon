@@ -1,0 +1,9 @@
+{
+  "name": "far-horizon-prototype",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Playable browser proof-of-concept for a true-scale procedural sci-fi sandbox.",
+  "scripts": {
+    "serve": "python -m http.server 8080"
+  }
+}
