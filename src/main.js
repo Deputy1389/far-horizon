@@ -217,7 +217,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='KeyE' && !systemsUI.isOpen) interact();
   if(e.code==='Digit1' && !systemsUI.isOpen) useMedkit();
   if(e.code==='KeyB' && !systemsUI.isOpen) deployCamp();
-  if(e.code==='KeyR' && !systemsUI.isOpen) location.href=\`?seed=\${Math.floor(Math.random()*900000+1)}\`;
+  if(e.code==='KeyR' && !systemsUI.isOpen) location.href=`?seed=${Math.floor(Math.random()*900000+1)}`;
   if(e.code==='Escape' && systemsUI.isOpen) systemsUI.close();
 });
 document.addEventListener('keyup',e=>keys[e.code]=false);
@@ -291,14 +291,14 @@ function fire(){
         enemy.userData.alive=false;
         kills++;
         character.recordDroneKill();
-        ui.drones.textContent=\`\${kills} / \${enemies.length}\`;
+        ui.drones.textContent=`${kills} / ${enemies.length}`;
         enemy.children.forEach(m=>{
           m.material=m.material.clone();
           m.material.color.setHex(0x3c3532);
           m.material.emissive.setHex(0x000000);
         });
-        toast(\`Patrol drone disabled · \${enemy.userData.scrap} salvage available\`);
-      } else toast(\`Drone armor \${Math.ceil(enemy.userData.hp)} / \${enemy.userData.maxHp}\`);
+        toast(`Patrol drone disabled · ${enemy.userData.scrap} salvage available`);
+      } else toast(`Drone armor ${Math.ceil(enemy.userData.hp)} / ${enemy.userData.maxHp}`);
     }
   }
   addShotLine(camera.position.clone(),end);
@@ -358,9 +358,9 @@ function survey(){
   if(found.length){
     found.sort((a,b)=>Math.hypot(player.position.x-a.x,player.position.z-a.z)-Math.hypot(player.position.x-b.x,player.position.z-b.z));
     const d=found[0],dist=Math.hypot(player.position.x-d.x,player.position.z-d.z),cat=RESOURCE_CATALOG[d.id];
-    const detail=character.hasSkill('scout_1')?\` · \${Object.entries(d.stats).map(([k,v])=>\`\${k} \${v}\`).join(' / ')}\`:'';
-    toast(\`\${found.length} deposits found · nearest \${cat.name} · quality \${d.quality} · \${Math.round(dist)}m\${detail}\`);
-  } else toast(\`No resource signatures within \${Math.round(range)}m\`);
+    const detail=character.hasSkill('scout_1')?` · ${Object.entries(d.stats).map(([k,v])=>`${k} ${v}`).join(' / ')}`:'';
+    toast(`${found.length} deposits found · nearest ${cat.name} · quality ${d.quality} · ${Math.round(dist)}m${detail}`);
+  } else toast(`No resource signatures within ${Math.round(range)}m`);
   setTimeout(()=>{scanReady=true;ui.scan.textContent='Ready'},1800);
 }
 function sampleResource(){
@@ -376,7 +376,7 @@ function sampleResource(){
   character.addResource(deposit.id,take,deposit.quality,deposit.stats);
   character.data.xp.scouting+=3; character.save();
   const cat=RESOURCE_CATALOG[deposit.id];
-  toast(\`Sampled \${take} \${cat.name} · quality \${deposit.quality} · \${Math.floor(deposit.remaining)} remaining\`);
+  toast(`Sampled ${take} ${cat.name} · quality ${deposit.quality} · ${Math.floor(deposit.remaining)} remaining`);
   deposit.revealedUntil=now+10; deposit.mesh.visible=true;
 }
 function useMedkit(){
@@ -384,7 +384,7 @@ function useMedkit(){
   if(!character.consumeItem('medkit',1)){toast('No medkits in inventory');return;}
   const healed=character.heal(character.medkitHeal());
   character.data.xp.medical+=4; character.save();
-  toast(\`Field treatment restored \${Math.round(healed)} health\`);
+  toast(`Field treatment restored ${Math.round(healed)} health`);
 }
 function deployCamp(){
   if(!character.hasSkill('scout_2')){toast('Train Scout: Field Harvesting to deploy camps');return;}
@@ -420,7 +420,7 @@ function interact(){
   const wreck=nearestDestroyedDrone();
   if(wreck){
     wreck.userData.salvaged=true; character.recordSalvage(wreck.userData.scrap); wreck.visible=false;
-    toast(\`Recovered \${wreck.userData.scrap} droid scrap\`); return;
+    toast(`Recovered ${wreck.userData.scrap} droid scrap`); return;
   }
   const point=nearestInteractionPoint();
   if(point){
@@ -435,7 +435,7 @@ function respawn(){
   toast('Recovered at the South Ridge field station · 25 credit recovery fee');
 }
 
-function collides(x,z)function collides(x,z){ for(const b of blockers) if(Math.abs(x-b.x)<b.hw && Math.abs(z-b.z)<b.hd) return true; return false; }
+function collides(x,z){ for(const b of blockers) if(Math.abs(x-b.x)<b.hw && Math.abs(z-b.z)<b.hd) return true; return false; }
 function updatePlayer(dt){
   if(!gameStarted||systemsUI.isOpen)return;
   const f=(keys.KeyW?1:0)-(keys.KeyS?1:0), s=(keys.KeyD?1:0)-(keys.KeyA?1:0);
@@ -474,7 +474,7 @@ function droneAttack(e,now){
   if(Math.random()<hitChance){
     addShotLine(start,end,0xff5c45,120);
     const remaining=character.damage(7);
-    if(remaining<=0)respawn(); else toast(\`Patrol hit · \${Math.ceil(remaining)} health\`);
+    if(remaining<=0)respawn(); else toast(`Patrol hit · ${Math.ceil(remaining)} health`);
   } else {
     end.add(new THREE.Vector3(rrange(-8,8),rrange(-4,8),rrange(-8,8)));
     addShotLine(start,end,0xff5c45,120);
@@ -483,13 +483,13 @@ function droneAttack(e,now){
 function updatePrompt(){
   let text='';
   const wreck=nearestDestroyedDrone();
-  if(wreck) text=\`E · salvage wreck (\${wreck.userData.scrap} scrap)\`;
+  if(wreck) text=`E · salvage wreck (${wreck.userData.scrap} scrap)`;
   else {
     const point=nearestInteractionPoint();
-    if(point) text=\`E · \${point.label}\`;
+    if(point) text=`E · ${point.label}`;
     else {
       const {deposit,distance}=nearestDeposit(55);
-      if(deposit&&deposit.remaining>0) text=\`H · hand-sample \${RESOURCE_CATALOG[deposit.id].name} (\${Math.round(distance)}m)\`;
+      if(deposit&&deposit.remaining>0) text=`H · hand-sample ${RESOURCE_CATALOG[deposit.id].name} (${Math.round(distance)}m)`;
     }
   }
   ui.prompt.textContent=text; ui.prompt.style.opacity=text?1:0;
