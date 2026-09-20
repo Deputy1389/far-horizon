@@ -1,0 +1,56 @@
+class_name SquadManager
+extends Node
+
+signal combat_started(squad_id: String)
+signal squad_cleared(squad_id: String)
+
+var squads: Dictionary = {}
+var combat_announced: Dictionary = {}
+
+func register_member(member: Node, squad_id: String) -> String:
+	if not squads.has(squad_id):
+		squads[squad_id] = []
+	var members: Array = squads[squad_id]
+	if not members.has(member):
+		members.append(member)
+	squads[squad_id] = members
+
+	var index := members.find(member)
+	match index % 4:
+		0:
+			return "suppress"
+		1:
+			return "flank_left"
+		2:
+			return "flank_right"
+		_:
+			return "advance"
+
+func alert_squad(squad_id: String, target: Node3D) -> void:
+	if not combat_announced.get(squad_id, false):
+		combat_announced[squad_id] = true
+		combat_started.emit(squad_id)
+	for member in squads.get(squad_id, []):
+		if is_instance_valid(member) and member.has_method("receive_squad_alert"):
+			member.receive_squad_alert(target)
+
+func member_died(member: Node, squad_id: String) -> void:
+	if not squads.has(squad_id):
+		return
+	var members: Array = squads[squad_id]
+	members.erase(member)
+	squads[squad_id] = members
+	var alive := 0
+	for candidate in members:
+		if is_instance_valid(candidate):
+			alive += 1
+	if alive == 0:
+		squad_cleared.emit(squad_id)
+
+func active_member_count() -> int:
+	var total := 0
+	for members in squads.values():
+		for member in members:
+			if is_instance_valid(member):
+				total += 1
+	return total
