@@ -65,6 +65,21 @@ CHARACTER_MESH_RULES: dict[str, dict[str, Any]] = {
 }
 
 
+AUDIO_TARGETS: dict[str, tuple[str, ...]] = {
+    "blasterPistol": (
+        "sample/wep_blaster_fire_2.wav",
+        "sample/wep_blaster_rifle_02.wav",
+    ),
+    "blasterRifle": (
+        "sample/wep_blaster_rifle_02.wav",
+        "sample/wep_blaster_fire_2.wav",
+    ),
+    "speederLoop": (
+        "sample/veh_flashspeeder_run_lp.wav",
+    ),
+}
+
+
 # Rules deliberately use semantic fragments instead of a list of guessed full
 # filenames. The importer ranks the complete local path inventory, so a client
 # patch can rename or add a more appropriate material without code changes.
@@ -636,7 +651,7 @@ def normalize_dds_file_for_godot(path: Path) -> bool:
 
 
 def _known_plain_magic(data: bytes) -> bool:
-    return data.startswith((b"DDS ", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
+    return data.startswith((b"DDS ", b"RIFF", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
 
 
 def decode_tre_entry(tre_path: Path, entry: dict[str, Any]) -> bytes:
