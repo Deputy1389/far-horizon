@@ -159,7 +159,10 @@ func _generate_garrison() -> void:
 	var main_mesh := BoxMesh.new()
 	main_mesh.size = Vector3(46.0, 13.0, 34.0)
 	main.mesh = main_mesh
-	main.position.y = 6.5
+	# Keep the objective courtyard at the compound center open and put the
+	# command building on the north side instead of making the capture point
+	# live inside a solid collision box.
+	main.position = Vector3(0.0, 6.5, -30.0)
 	main.material_override = wall_material
 	root.add_child(main)
 
@@ -168,7 +171,7 @@ func _generate_garrison() -> void:
 	var shape := BoxShape3D.new()
 	shape.size = main_mesh.size
 	collision.shape = shape
-	collision.position.y = 6.5
+	collision.position = Vector3(0.0, 6.5, -30.0)
 	static_body.add_child(collision)
 	root.add_child(static_body)
 
