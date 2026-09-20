@@ -1,0 +1,50 @@
+name: Foundation validation
+
+on:
+  push:
+    branches:
+      - chatgpt/foundation-v0.1
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  godot-foundation:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import Godot project
+        run: |
+          godot --headless --path . --editor --quit-after 2
+
+      - name: Parse every foundation script
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            echo "Checking $script"
+            godot --headless --path . --check-only --script "res://$script"
+          done < <(find game/scripts -type f -name '*.gd' | sort)
+
+      - name: Boot the playable foundation
+        run: |
+          godot --headless --path . --quit-after 180
+
+  existing-pipeline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python unit tests
+        run: python3 -m unittest discover tools -p "test_*.py" -q
+
+      - name: Node motion tests
+        run: node tools/test_motion.mjs
+
+      - name: Node asset diagnostics tests
+        run: node tools/test_asset_diagnostics.mjs
