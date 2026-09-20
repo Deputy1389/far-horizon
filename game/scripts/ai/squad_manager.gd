@@ -4,6 +4,8 @@ extends Node
 signal combat_started(squad_id: String)
 signal squad_cleared(squad_id: String)
 
+@export var reinforcement_radius := 38.0
+
 var squads: Dictionary = {}
 var combat_announced: Dictionary = {}
 
@@ -27,10 +29,32 @@ func register_member(member: Node, squad_id: String) -> String:
 			return "advance"
 
 func alert_squad(squad_id: String, target: Node3D) -> void:
-	if not combat_announced.get(squad_id, false):
+	_alert_members(squad_id, target)
+
+	# Nearby squads can hear/observe the same fight and join without a magical
+	# city-wide aggro switch. This keeps local combat connected while preserving
+	# room for genuinely separate encounters in a larger settlement.
+	for id_value in squads.keys():
+		var other_id := String(id_value)
+		if other_id == squad_id or bool(combat_announced.get(other_id, false)):
+			continue
+		var should_reinforce := false
+		var members: Array = squads.get(other_id, [])
+		for member in members:
+			if not member is Node3D or not is_instance_valid(member):
+				continue
+			if (member as Node3D).global_position.distance_to(target.global_position) <= reinforcement_radius:
+				should_reinforce = true
+				break
+		if should_reinforce:
+			_alert_members(other_id, target)
+
+func _alert_members(squad_id: String, target: Node3D) -> void:
+	if not bool(combat_announced.get(squad_id, false)):
 		combat_announced[squad_id] = true
 		combat_started.emit(squad_id)
-	for member in squads.get(squad_id, []):
+	var members: Array = squads.get(squad_id, [])
+	for member in members:
 		if is_instance_valid(member) and member.has_method("receive_squad_alert"):
 			member.receive_squad_alert(target)
 
@@ -49,7 +73,8 @@ func member_died(member: Node, squad_id: String) -> void:
 
 func active_member_count() -> int:
 	var total := 0
-	for members in squads.values():
+	for members_value in squads.values():
+		var members: Array = members_value
 		for member in members:
 			if is_instance_valid(member):
 				total += 1
