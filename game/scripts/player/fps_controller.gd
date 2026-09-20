@@ -18,6 +18,7 @@ const PRONE := "prone"
 @export var ground_deceleration := 40.0
 @export var air_acceleration := 5.5
 @export var jump_velocity := 6.2
+@export var jump_buffer_window := 0.12
 @export var mouse_sensitivity := 0.00175
 @export var step_height := 0.42
 @export var mantle_reach := 0.95
@@ -30,6 +31,7 @@ var pitch := 0.0
 var gravity := 18.0
 var coyote_time := 0.0
 var jump_cooldown := 0.0
+var jump_buffer := 0.0
 var mantle_active := false
 var mantle_elapsed := 0.0
 var mantle_duration := 0.2
@@ -105,7 +107,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
 
 func _physics_process(delta: float) -> void:
-	jump_cooldown = max(0.0, jump_cooldown - delta)
+	jump_cooldown = maxf(0.0, jump_cooldown - delta)
+	jump_buffer = maxf(0.0, jump_buffer - delta)
 
 	if active_vehicle != null and is_instance_valid(active_vehicle):
 		_update_vehicle_mode()
@@ -133,15 +136,23 @@ func _physics_process(delta: float) -> void:
 	wish_direction.y = 0.0
 	wish_direction = wish_direction.normalized()
 
-	var sprinting := stance == STAND and Input.is_action_pressed("sprint") and input_vector.y < -0.15
+	var sprinting := (
+		stance == STAND
+		and Input.is_action_pressed("sprint")
+		and input_vector.y < -0.15
+		and not weapons.is_aiming()
+		and not Input.is_action_pressed("fire")
+	)
 	var target_speed := _stance_speed(sprinting)
+	if weapons.is_aiming():
+		target_speed *= 0.76
 	var target_velocity := wish_direction * target_speed
 	var grounded := is_on_floor()
 
 	if grounded:
 		coyote_time = 0.11
 	else:
-		coyote_time = max(0.0, coyote_time - delta)
+		coyote_time = maxf(0.0, coyote_time - delta)
 		velocity.y -= gravity * delta
 
 	var acceleration := ground_acceleration if grounded else air_acceleration
@@ -153,11 +164,14 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("jump"):
 		if _try_begin_mantle():
 			return
-		if grounded or coyote_time > 0.0:
-			if jump_cooldown <= 0.0 and stance != PRONE:
-				velocity.y = jump_velocity
-				jump_cooldown = 0.2
-				coyote_time = 0.0
+		jump_buffer = jump_buffer_window
+
+	if jump_buffer > 0.0 and (grounded or coyote_time > 0.0):
+		if jump_cooldown <= 0.0 and stance != PRONE:
+			velocity.y = jump_velocity
+			jump_cooldown = 0.2
+			jump_buffer = 0.0
+			coyote_time = 0.0
 
 	_try_step(delta)
 	move_and_slide()
