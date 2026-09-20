@@ -13,6 +13,7 @@ from import_swg_assets import (
     decode_tre_entry,
     decrypt_twofish_ecb,
     is_valid_dds_payload,
+    normalize_dds_payload_for_godot,
     read_tre_index,
     search_entries,
     select_character_mesh,
@@ -88,6 +89,41 @@ class ImporterCoreTests(unittest.TestCase):
         header[:4] = b"DDS "
         struct.pack_into("<III", header, 4, 124, 4, 4)
         self.assertTrue(is_valid_dds_payload(bytes(header)))
+
+    def test_dds_header_normalization_repairs_legacy_dxt1_linear_size(self) -> None:
+        header = bytearray(128 + 128)
+        header[:4] = b"DDS "
+        struct.pack_into("<I", header, 4, 124)
+        struct.pack_into("<I", header, 8, 0x00081007)
+        struct.pack_into("<I", header, 12, 8)
+        struct.pack_into("<I", header, 16, 8)
+        struct.pack_into("<I", header, 20, 999)
+        struct.pack_into("<I", header, 76, 32)
+        struct.pack_into("<I", header, 80, 0x4)
+        header[84:88] = b"DXT1"
+
+        normalized, changed = normalize_dds_payload_for_godot(bytes(header))
+
+        self.assertTrue(changed)
+        self.assertEqual(struct.unpack_from("<I", normalized, 20)[0], 32)
+        self.assertEqual(normalized[128:], bytes(header[128:]))
+
+    def test_dds_header_normalization_leaves_correct_size_alone(self) -> None:
+        header = bytearray(128)
+        header[:4] = b"DDS "
+        struct.pack_into("<I", header, 4, 124)
+        struct.pack_into("<I", header, 8, 0x00081007)
+        struct.pack_into("<I", header, 12, 16)
+        struct.pack_into("<I", header, 16, 16)
+        struct.pack_into("<I", header, 20, 256)
+        struct.pack_into("<I", header, 76, 32)
+        struct.pack_into("<I", header, 80, 0x4)
+        header[84:88] = b"DXT5"
+
+        normalized, changed = normalize_dds_payload_for_godot(bytes(header))
+
+        self.assertFalse(changed)
+        self.assertEqual(normalized, bytes(header))
 
     def test_restoration_twofish_matches_known_vector(self) -> None:
         key = bytes(range(16))
