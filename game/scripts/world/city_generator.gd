@@ -139,6 +139,40 @@ func _add_building(offset: Vector2, size: Vector3) -> void:
 		roof.material_override = roof_material
 		root.add_child(roof)
 
+	if rng.randf() > 0.70:
+		var dome := MeshInstance3D.new()
+		var dome_mesh := SphereMesh.new()
+		var dome_radius := rng.randf_range(2.4, minf(size.x, size.z) * 0.22)
+		dome_mesh.radius = dome_radius
+		dome_mesh.height = dome_radius * 2.0
+		dome_mesh.radial_segments = 12
+		dome_mesh.rings = 6
+		dome.mesh = dome_mesh
+		dome.scale = Vector3(1.0, 0.46, 1.0)
+		dome.position = Vector3(
+			rng.randf_range(-size.x * 0.18, size.x * 0.18),
+			size.y + dome_radius * 0.08,
+			rng.randf_range(-size.z * 0.18, size.z * 0.18)
+		)
+		dome.material_override = wall_material
+		root.add_child(dome)
+
+	if rng.randf() > 0.74:
+		var mast := MeshInstance3D.new()
+		var mast_mesh := CylinderMesh.new()
+		mast_mesh.top_radius = 0.12
+		mast_mesh.bottom_radius = 0.16
+		mast_mesh.height = rng.randf_range(3.5, 7.5)
+		mast_mesh.radial_segments = 6
+		mast.mesh = mast_mesh
+		mast.position = Vector3(
+			rng.randf_range(-size.x * 0.28, size.x * 0.28),
+			size.y + mast_mesh.height * 0.5,
+			rng.randf_range(-size.z * 0.28, size.z * 0.28)
+		)
+		mast.material_override = accent_material
+		root.add_child(mast)
+
 	if rng.randf() > 0.66:
 		var awning := MeshInstance3D.new()
 		var awning_mesh := BoxMesh.new()
