@@ -86,13 +86,27 @@ func _process(delta: float) -> void:
 
 	aiming = enabled and Input.is_action_pressed("aim")
 	var weapon := current_weapon()
-	var target_fov := weapon.ads_fov if aiming else base_fov
+	var planar_speed := Vector2(owner_body.velocity.x, owner_body.velocity.z).length() if owner_body != null else 0.0
+	var sprint_presented := (
+		enabled
+		and not aiming
+		and Input.is_action_pressed("sprint")
+		and planar_speed > 7.0
+		and not Input.is_action_pressed("fire")
+	)
+	var target_fov := weapon.ads_fov if aiming else (base_fov + 4.0 if sprint_presented else base_fov)
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 15.0))
 
 	viewmodel_kick = lerpf(viewmodel_kick, 0.0, 1.0 - exp(-delta * 18.0))
 	var target_offset := weapon.ads_offset if aiming else weapon.viewmodel_offset
+	if sprint_presented:
+		target_offset += Vector3(0.0, -0.09, 0.09)
 	target_offset += Vector3(0.0, 0.0, viewmodel_kick)
 	viewmodel.position = viewmodel.position.lerp(target_offset, 1.0 - exp(-delta * 18.0))
+	var target_roll := deg_to_rad(-8.0) if sprint_presented else 0.0
+	var target_pitch := deg_to_rad(10.0) if sprint_presented else 0.0
+	viewmodel.rotation.z = lerpf(viewmodel.rotation.z, target_roll, 1.0 - exp(-delta * 12.0))
+	viewmodel.rotation.x = lerpf(viewmodel.rotation.x, target_pitch, 1.0 - exp(-delta * 12.0))
 
 	if enabled and Input.is_action_pressed("fire") and cooldown <= 0.0:
 		_fire()
