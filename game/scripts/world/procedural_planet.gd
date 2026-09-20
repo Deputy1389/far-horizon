@@ -17,6 +17,8 @@ var broad_noise := FastNoiseLite.new()
 var detail_noise := FastNoiseLite.new()
 var dune_noise := FastNoiseLite.new()
 var sand_material := StandardMaterial3D.new()
+var rock_material := StandardMaterial3D.new()
+var dressing_exclusions: Array[Vector3] = []
 
 func configure(floating_origin: FloatingOrigin, tracked_player: Node3D) -> void:
 	origin_service = floating_origin
@@ -50,6 +52,12 @@ func _setup_noise() -> void:
 func _setup_material() -> void:
 	sand_material.albedo_color = Color(0.56, 0.36, 0.2)
 	sand_material.roughness = 0.96
+	rock_material.albedo_color = Color(0.31, 0.19, 0.12)
+	rock_material.roughness = 0.98
+	var imported_concrete := SwgAssetBridge.texture_for_role("concrete")
+	if imported_concrete != null:
+		rock_material.albedo_texture = imported_concrete
+		rock_material.albedo_color = Color(0.42, 0.31, 0.23)
 	var imported_sand := SwgAssetBridge.texture_for_role("sand")
 	if imported_sand != null:
 		sand_material.albedo_texture = imported_sand
@@ -59,6 +67,9 @@ func _setup_material() -> void:
 		sand_material.normal_enabled = true
 		sand_material.normal_texture = imported_normal
 		sand_material.normal_scale = 0.55
+
+func add_dressing_exclusion(center: Vector2, radius: float) -> void:
+	dressing_exclusions.append(Vector3(center.x, center.y, maxf(radius, 0.0)))
 
 func generate_initial() -> void:
 	_update_chunks(true)
@@ -142,7 +153,57 @@ func _build_chunk(key: Vector2i) -> Node3D:
 	collision.shape = mesh.create_trimesh_shape()
 	body.add_child(collision)
 	root.add_child(body)
+	_add_chunk_dressing(root, key, start_x, start_z)
 	return root
+
+func _add_chunk_dressing(root: Node3D, key: Vector2i, start_x: float, start_z: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%d:%d:%d" % [seed, key.x, key.y])
+
+	var transforms: Array[Transform3D] = []
+	for index in range(9):
+		var local_x := start_x + rng.randf_range(8.0, chunk_size - 8.0)
+		var local_z := start_z + rng.randf_range(8.0, chunk_size - 8.0)
+		if _is_dressing_excluded(local_x, local_z):
+			continue
+		var position := surface_point(local_x, local_z)
+		var yaw := rng.randf_range(0.0, TAU)
+		var scale := Vector3(
+			rng.randf_range(0.45, 1.7),
+			rng.randf_range(0.35, 1.25),
+			rng.randf_range(0.45, 1.7)
+		)
+		var basis := Basis(Vector3.UP, yaw).scaled(scale)
+		transforms.append(Transform3D(basis, position))
+
+	if transforms.is_empty():
+		return
+
+	var rock_mesh := SphereMesh.new()
+	rock_mesh.radius = 0.72
+	rock_mesh.height = 1.25
+	rock_mesh.radial_segments = 8
+	rock_mesh.rings = 4
+	rock_mesh.material = rock_material
+
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.mesh = rock_mesh
+	multimesh.instance_count = transforms.size()
+	for index in range(transforms.size()):
+		multimesh.set_instance_transform(index, transforms[index])
+
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multimesh
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	root.add_child(instance)
+
+func _is_dressing_excluded(local_x: float, local_z: float) -> bool:
+	var point := Vector2(local_x, local_z)
+	for exclusion in dressing_exclusions:
+		if point.distance_to(Vector2(exclusion.x, exclusion.y)) <= exclusion.z:
+			return true
+	return false
 
 func _add_triangle(surface: SurfaceTool, vertices: Array[Vector3], uvs: Array[Vector2], a: int, b: int, c: int) -> void:
 	for index in [a, b, c]:
