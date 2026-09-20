@@ -1,6 +1,8 @@
 class_name BlasterBolt
 extends Node3D
 
+signal damaged_target
+
 var velocity := Vector3.ZERO
 var damage := 25.0
 var lifetime := 3.0
@@ -50,9 +52,10 @@ func _physics_process(delta: float) -> void:
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		global_position = hit["position"]
-		var collider = hit.get("collider")
+		var collider: Variant = hit.get("collider")
 		if collider != null and collider.has_method("apply_damage"):
 			collider.apply_damage(damage, hit["position"], velocity.normalized(), source)
+			damaged_target.emit()
 		queue_free()
 		return
 
