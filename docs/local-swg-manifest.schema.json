@@ -40,11 +40,14 @@
         "properties": {
           "url": { "type": "string" },
           "archive": { "type": "string" },
+          "archivePath": { "type": "string" },
+          "archiveRank": { "type": "integer", "minimum": 0 },
           "virtualPath": { "type": "string" },
           "kind": { "type": "string" },
           "uncompressedSize": { "type": "integer", "minimum": 0 },
           "compression": { "type": "integer", "minimum": 0 },
-          "sourceKind": { "type": "string" }
+          "sourceKind": { "type": "string" },
+          "sourcePath": { "type": "string" }
         },
         "additionalProperties": true
       }
@@ -62,6 +65,8 @@
             "url": { "type": "string" },
             "bin": { "type": "string" },
             "archive": { "type": "string" },
+            "archivePath": { "type": "string" },
+            "archiveRank": { "type": "integer", "minimum": 0 },
             "virtualPath": { "type": "string" },
             "submeshes": { "type": "integer", "minimum": 0 },
             "vertices": { "type": "integer", "minimum": 0 },

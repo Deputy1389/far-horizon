@@ -263,8 +263,8 @@ export async function createMaterialLibrary(renderer){
   function building(hex){
     const key=Number(hex);
     if(facadeCache.has(key))return facadeCache.get(key);
-    const useSwg=!!wallA;
-    const source=(wallDetail&&key%5===0)?wallDetail:(key%2===0?wallA:wallB)||wallA;
+    const useSwg=!!(wallA||wallB||wallDetail);
+    const source=(wallDetail&&key%5===0)?wallDetail:(key%2===0?wallA:wallB)||wallA||wallB||wallDetail;
     const sideTex=useSwg?localClone(source,2.2):prep(makeFacade(key,4000+key%997));
     const roofSource=(local?.capitalStair&&key%7===0)?local.capitalStair:floor;
     const roofTex=roofSource?localClone(roofSource,2.4):prep(makeRoof(key,7000+key%991));

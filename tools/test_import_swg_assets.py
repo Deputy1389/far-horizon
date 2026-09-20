@@ -12,9 +12,11 @@ from import_swg_assets import (
     build_manifest_asset,
     decode_tre_entry,
     decrypt_twofish_ecb,
+    is_valid_dds_payload,
     read_tre_index,
     search_entries,
     select_asset,
+    static_asset_candidates,
 )
 from swg_twofish import encrypt_twofish_ecb
 
@@ -33,6 +35,7 @@ class ImporterCoreTests(unittest.TestCase):
 
     def test_role_selection_is_deterministic_and_prefers_specific_path(self) -> None:
         entries = [
+            AssetEntry("texture/tatt_sand_bumpy.sht", Path("bad.tre"), {"compression": 2}),
             AssetEntry("texture/desert_sand.dds", Path("z.tre"), {"compression": 2}),
             AssetEntry("texture/tatt_sand_bumpy.dds", Path("a.tre"), {"compression": 2}),
             AssetEntry("texture/tatt_sand_bumpy_n.dds", Path("a.tre"), {"compression": 2}),
@@ -42,6 +45,35 @@ class ImporterCoreTests(unittest.TestCase):
 
         self.assertIsNotNone(selected)
         self.assertEqual(selected.virtual_path, "texture/tatt_sand_bumpy.dds")
+
+    def test_duplicate_virtual_paths_prefer_later_archive_rank(self) -> None:
+        entries = [
+            AssetEntry("texture/tatt_sand_bumpy.dds", Path("base.tre"), {"compression": 2, "archive_rank": 1}),
+            AssetEntry("texture/tatt_sand_bumpy.dds", Path("patch.tre"), {"compression": 2, "archive_rank": 2}),
+        ]
+
+        selected = select_asset(entries, "sand")
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.archive, Path("patch.tre"))
+
+    def test_mesh_catalog_includes_moisture_proof_and_honors_extension(self) -> None:
+        entries = [
+            AssetEntry("appearance/mesh/ins_all_min_moisture_s01_u0_l0.msh", Path("a.tre"), {}),
+            AssetEntry("appearance/lod/mun_tato_starport_s01.lod", Path("b.tre"), {}),
+            AssetEntry("texture/tatt_sand_bumpy.dds", Path("c.tre"), {}),
+        ]
+
+        candidates = static_asset_candidates(entries, ".MSH")
+
+        self.assertEqual([entry.virtual_path for entry in candidates], ["appearance/mesh/ins_all_min_moisture_s01_u0_l0.msh"])
+
+    def test_dds_header_validation_rejects_non_dds_payload(self) -> None:
+        self.assertFalse(is_valid_dds_payload(b"DDS fixture"))
+        header = bytearray(128)
+        header[:4] = b"DDS "
+        struct.pack_into("<III", header, 4, 124, 4, 4)
+        self.assertTrue(is_valid_dds_payload(bytes(header)))
 
     def test_restoration_twofish_matches_known_vector(self) -> None:
         key = bytes(range(16))

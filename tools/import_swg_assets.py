@@ -33,6 +33,27 @@ class AssetEntry:
     def extension(self) -> str:
         return Path(self.virtual_path).suffix.lower()
 
+    @property
+    def archive_rank(self) -> int:
+        return int(self.metadata.get("archive_rank", 0))
+
+
+STATIC_ASSET_EXTENSIONS = {".msh", ".lod", ".pob", ".apt"}
+MESH_KEYWORDS = (
+    "tato",
+    "tatt",
+    "mos",
+    "eisley",
+    "starport",
+    "moisture",
+    "vapor",
+    "jabba",
+    "pipe",
+    "cafe",
+    "house",
+    "industrial",
+)
+
 
 # Rules deliberately use semantic fragments instead of a list of guessed full
 # filenames. The importer ranks the complete local path inventory, so a client
@@ -331,7 +352,7 @@ def inventory_from_archives(tre_files: Iterable[Path]) -> tuple[list[AssetEntry]
     parsed_rows = 0
     valid_rows = 0
 
-    for tre_path in tre_files:
+    for archive_rank, tre_path in enumerate(tre_files):
         try:
             archive = read_tre_index(tre_path)
         except Exception as exc:  # pragma: no cover - protects a full client scan
@@ -350,7 +371,7 @@ def inventory_from_archives(tre_files: Iterable[Path]) -> tuple[list[AssetEntry]
         compressors[comp_key] = compressors.get(comp_key, 0) + 1
 
         for virtual_path, metadata in archive["entries"].items():
-            inventory.append(AssetEntry(virtual_path, tre_path, metadata))
+            inventory.append(AssetEntry(virtual_path, tre_path, {**metadata, "archive_rank": archive_rank}))
 
     stats = {
         "archiveCount": len(tre_files),
@@ -389,13 +410,13 @@ def search_entries(entries: Iterable[AssetEntry], terms: Iterable[str], extensio
         if all(matches(entry.virtual_path.lower(), term) for term in normalized_terms)
         and (normalized_extension is None or entry.extension == normalized_extension)
     ]
-    return sorted(result, key=lambda entry: (entry.virtual_path, entry.archive.name.lower()))
+    return sorted(result, key=lambda entry: (entry.virtual_path, -entry.archive_rank, str(entry.archive).lower()))
 
 
 def _role_score(entry: AssetEntry, role: str) -> int | None:
     rule = ROLE_RULES[role]
     path = entry.virtual_path.lower()
-    if entry.extension != rule.get("extension", entry.extension):
+    if entry.extension != ".dds":
         return None
     if any(fragment in path for fragment in rule.get("exclude", [])):
         return None
@@ -422,20 +443,42 @@ def select_asset(entries: Iterable[AssetEntry], role: str) -> AssetEntry | None:
     ranked = [(score, entry) for entry in entries if (score := _role_score(entry, role)) is not None]
     if not ranked:
         return None
-    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, item[1].archive.name.lower()))
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
     return ranked[0][1]
 
 
 def ranked_assets(entries: Iterable[AssetEntry], role: str, limit: int = 10) -> list[tuple[int, AssetEntry]]:
     ranked = [(score, entry) for entry in entries if (score := _role_score(entry, role)) is not None]
-    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, item[1].archive.name.lower()))
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
     return ranked[:limit]
+
+
+def static_asset_candidates(entries: Iterable[AssetEntry], extension: str | None = None) -> list[AssetEntry]:
+    normalized_extension = extension.lower() if extension else None
+    if normalized_extension and not normalized_extension.startswith("."):
+        normalized_extension = f".{normalized_extension}"
+
+    candidates = [
+        entry
+        for entry in entries
+        if entry.extension in STATIC_ASSET_EXTENSIONS
+        and (normalized_extension is None or entry.extension == normalized_extension)
+        and any(keyword in entry.virtual_path for keyword in MESH_KEYWORDS)
+    ]
+
+    def sort_key(entry: AssetEntry) -> tuple[int, str, int, str]:
+        priority = 0 if any(term in entry.virtual_path for term in ("moisture", "vapor", "starport", "jabba", "pipe", "cafe", "house")) else 1
+        return priority, entry.virtual_path, -entry.archive_rank, str(entry.archive).lower()
+
+    return sorted(candidates, key=sort_key)
 
 
 def build_manifest_asset(entry: AssetEntry, url: str) -> dict[str, Any]:
     return {
         "url": url,
         "archive": entry.archive.name,
+        "archivePath": str(entry.archive),
+        "archiveRank": entry.archive_rank,
         "virtualPath": entry.virtual_path,
         "kind": entry.extension.lstrip(".") or "binary",
         "uncompressedSize": int(entry.metadata.get("uncompressed_size", 0)),
@@ -443,20 +486,49 @@ def build_manifest_asset(entry: AssetEntry, url: str) -> dict[str, Any]:
     }
 
 
-def copy_loose(root: Path, virtual_path: str, destination: Path) -> bool:
+def copy_loose(root: Path, virtual_path: str, destination: Path) -> Path | None:
     candidate = root.joinpath(*virtual_path.split("/"))
     if candidate.is_file():
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(candidate.read_bytes())
-        return True
+        return candidate
 
-    wanted = Path(virtual_path).name.lower()
+    normalized = virtual_path.replace("\\", "/").strip("/").lower()
+    matches: list[Path] = []
     for loose in sorted(root.rglob("*"), key=lambda path: str(path).lower()):
-        if loose.is_file() and loose.name.lower() == wanted:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(loose.read_bytes())
-            return True
-    return False
+        if not loose.is_file():
+            continue
+        try:
+            relative = loose.relative_to(root).as_posix().lower()
+        except ValueError:
+            continue
+        if relative == normalized or relative.endswith(f"/{normalized}"):
+            matches.append(loose)
+    if not matches:
+        return None
+
+    # Nested patch folders are allowed, but basename-only matches are not. If
+    # several exact virtual-path overrides exist, lexical order gives a stable
+    # local choice and the manifest records the chosen source path.
+    source = matches[-1]
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(source.read_bytes())
+    return source
+
+
+def is_valid_dds_payload(data: bytes) -> bool:
+    if len(data) < 128 or data[:4] != b"DDS ":
+        return False
+    header_size, height, width = struct.unpack_from("<III", data, 4)
+    return header_size == 124 and width > 0 and height > 0
+
+
+def is_valid_dds_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as stream:
+            return is_valid_dds_payload(stream.read(128))
+    except OSError:
+        return False
 
 
 def _known_plain_magic(data: bytes) -> bool:
@@ -520,7 +592,7 @@ def _print_search_results(entries: list[AssetEntry], terms: list[str], extension
     print(f"Search {' '.join(terms)!r}: {len(matches):,} matching inventory rows")
     shown: set[tuple[str, str]] = set()
     for entry in matches:
-        identity = (entry.archive.name.lower(), entry.virtual_path)
+        identity = (str(entry.archive).lower(), entry.virtual_path)
         if identity in shown:
             continue
         shown.add(identity)
@@ -533,20 +605,12 @@ def _print_search_results(entries: list[AssetEntry], terms: list[str], extension
             break
 
 
-def _mesh_report(entries: list[AssetEntry], limit: int) -> None:
+def _mesh_report(entries: list[AssetEntry], limit: int, extension: str | None = None) -> None:
     print("SWG static-environment candidates (catalog only; no copyrighted files are written):")
-    candidates = search_entries(entries, ["tato"], None)
-    candidates = [entry for entry in candidates if entry.extension in {".msh", ".lod", ".pob", ".apt"}]
-    candidates.sort(
-        key=lambda entry: (
-            0 if any(term in entry.virtual_path for term in ("starport", "moisture", "vapor", "jabba", "pipe", "cafe", "house")) else 1,
-            entry.virtual_path,
-            entry.archive.name.lower(),
-        )
-    )
+    candidates = static_asset_candidates(entries, extension)
     for entry in candidates[:limit]:
         print(f"  {entry.archive.name} :: {entry.virtual_path}")
-    print(f"  ... {len(candidates):,} Tatooine candidates in the parsed inventory")
+    print(f"  ... {len(candidates):,} matching static-environment candidates in the parsed inventory")
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -593,7 +657,7 @@ def main() -> int:
         _print_search_results(inventory, args.search, args.extension, max(1, args.limit))
         return 0
     if args.mesh_report:
-        _mesh_report(inventory, max(1, args.limit))
+        _mesh_report(inventory, max(1, args.limit), args.extension)
         return 0
 
     project_root = Path(__file__).resolve().parents[1]
@@ -619,8 +683,10 @@ def main() -> int:
             destination = texture_root / destination_name
             source_kind = "loose"
             error: str | None = None
+            loose_path: Path | None = None
 
-            if not copy_loose(source, entry.virtual_path, destination):
+            loose_path = copy_loose(source, entry.virtual_path, destination)
+            if loose_path is None:
                 source_kind = "TRE"
                 ok, error = extract_from_tre(entry.archive, entry.metadata, destination)
                 if not ok:
@@ -632,20 +698,34 @@ def main() -> int:
             else:
                 ok = True
 
-            if ok:
-                url = f"./assets/local-swg/texture/{destination.name}"
-                manifest_assets[role] = build_manifest_asset(entry, url)
-                manifest_assets[role]["sourceKind"] = source_kind
-                selections[role] = {
-                    "score": score,
-                    "archive": entry.archive.name,
-                    "virtualPath": entry.virtual_path,
-                    "url": url,
-                }
-                imported += 1
-                print(f"SELECT {role:<14} score={score:<4} {entry.archive.name} :: {entry.virtual_path} [{source_kind}]")
-                imported_role = True
-                break
+            if ok and not is_valid_dds_file(destination):
+                error = "decoded candidate did not have a valid DDS header"
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                continue
+
+            if not ok:
+                continue
+
+            url = f"./assets/local-swg/texture/{destination.name}"
+            manifest_assets[role] = build_manifest_asset(entry, url)
+            manifest_assets[role]["sourceKind"] = source_kind
+            if loose_path is not None:
+                manifest_assets[role]["sourcePath"] = str(loose_path.relative_to(source).as_posix())
+            selections[role] = {
+                "score": score,
+                "archive": entry.archive.name,
+                "archivePath": str(entry.archive),
+                "archiveRank": entry.archive_rank,
+                "virtualPath": entry.virtual_path,
+                "url": url,
+            }
+            imported += 1
+            print(f"SELECT {role:<14} score={score:<4} {entry.archive.name} :: {entry.virtual_path} [{source_kind}]")
+            imported_role = True
+            break
 
         if not imported_role:
             failures[role] = error or "all ranked candidates failed to decode"
@@ -654,12 +734,13 @@ def main() -> int:
     mesh_candidates_all = [
         {
             "archive": entry.archive.name,
+            "archivePath": str(entry.archive),
+            "archiveRank": entry.archive_rank,
             "virtualPath": entry.virtual_path,
             "extension": entry.extension,
             "uncompressedSize": int(entry.metadata.get("uncompressed_size", 0)),
         }
-        for entry in search_entries(inventory, ["tato"], None)
-        if entry.extension in {".msh", ".lod", ".pob", ".apt"}
+        for entry in static_asset_candidates(inventory)
     ]
     mesh_candidates = mesh_candidates_all[:500]
 
@@ -674,6 +755,8 @@ def main() -> int:
         mesh_proof = {
             "url": f"./assets/local-swg/mesh/{mesh_gltf.name}",
             "archive": mesh_entry.archive.name,
+            "archivePath": str(mesh_entry.archive),
+            "archiveRank": mesh_entry.archive_rank,
             "virtualPath": mesh_entry.virtual_path,
             "bin": f"./assets/local-swg/mesh/{mesh_bin.name}",
             **mesh_summary,
