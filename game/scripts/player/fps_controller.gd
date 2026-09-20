@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 signal health_changed(current: float, maximum: float)
 signal died
+signal damaged(amount: float)
 signal stance_changed(stance: String)
 
 const STAND := "stand"
@@ -311,8 +312,9 @@ func add_recoil(pitch_degrees: float, yaw_degrees: float) -> void:
 	rotate_y(deg_to_rad(yaw_degrees))
 
 func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Vector3.ZERO, _source = null) -> void:
-	health = max(0.0, health - amount)
+	health = maxf(0.0, health - amount)
 	health_changed.emit(health, maximum_health)
+	damaged.emit(amount)
 	if health <= 0.0:
 		died.emit()
 
