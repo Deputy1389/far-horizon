@@ -799,6 +799,53 @@ def main() -> int:
     godot_texture_root = output_root / "godot" / "texture"
     godot_texture_root.mkdir(parents=True, exist_ok=True)
 
+    path_index: dict[str, AssetEntry] = {}
+    for entry in inventory:
+        key = entry.virtual_path.lower()
+        previous = path_index.get(key)
+        if previous is None or entry.archive_rank > previous.archive_rank:
+            path_index[key] = entry
+
+    audio_root = output_root / "audio"
+    audio_root.mkdir(parents=True, exist_ok=True)
+    audio_assets: dict[str, dict[str, Any]] = {}
+    audio_failures: dict[str, str] = {}
+    for role, candidates in AUDIO_TARGETS.items():
+        selected_audio: AssetEntry | None = None
+        for candidate in candidates:
+            selected_audio = path_index.get(candidate.lower())
+            if selected_audio is not None:
+                break
+        if selected_audio is None:
+            audio_failures[role] = "no known SWG WAV candidate found"
+            print(f"AUDIO  miss {role}: {audio_failures[role]}")
+            continue
+
+        destination = audio_root / f"{role}.wav"
+        loose_path = copy_loose(source, selected_audio.virtual_path, destination)
+        source_kind = "loose"
+        if loose_path is None:
+            source_kind = "TRE"
+            ok, error = extract_from_tre(selected_audio.archive, selected_audio.metadata, destination)
+            if not ok:
+                audio_failures[role] = error or "TRE extraction failed"
+                destination.unlink(missing_ok=True)
+                print(f"AUDIO  miss {role}: {audio_failures[role]}")
+                continue
+        if not is_valid_wav_file(destination):
+            audio_failures[role] = "decoded sample was not a standard RIFF/WAVE payload"
+            destination.unlink(missing_ok=True)
+            print(f"AUDIO  miss {role}: {audio_failures[role]}")
+            continue
+
+        url = f"./assets/local-swg/audio/{destination.name}"
+        descriptor = build_manifest_asset(selected_audio, url)
+        descriptor["sourceKind"] = source_kind
+        if loose_path is not None:
+            descriptor["sourcePath"] = str(loose_path.relative_to(source).as_posix())
+        audio_assets[role] = descriptor
+        print(f"AUDIO  {role:<14} {selected_audio.archive.name} :: {selected_audio.virtual_path} [{source_kind}]")
+
     manifest_assets: dict[str, dict[str, Any]] = {}
     selections: dict[str, dict[str, Any]] = {}
     failures: dict[str, str] = {}
@@ -944,13 +991,6 @@ def main() -> int:
             find_display_base_submeshes,
             parse_static_mesh,
         )
-
-        path_index: dict[str, AssetEntry] = {}
-        for entry in inventory:
-            key = entry.virtual_path.lower()
-            previous = path_index.get(key)
-            if previous is None or entry.archive_rank > previous.archive_rank:
-                path_index[key] = entry
 
         for role in CHARACTER_MESH_RULES:
             static_entry = select_character_mesh(inventory, role)
@@ -1127,6 +1167,8 @@ def main() -> int:
         "decoder": {"tre": "Twofish-128 ECB + zlib", "key": "embedded Restoration client key"},
         "inventory": stats,
         "assets": manifest_assets,
+        "audio": audio_assets,
+        "audioFailures": audio_failures,
         "selections": selections,
         "failedRoles": failures,
         "meshCandidates": mesh_candidates,
