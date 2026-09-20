@@ -55,7 +55,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	for enemy in get_tree().get_nodes_in_group("enemy"):
-		if enemy is Node3D and global_position.distance_to((enemy as Node3D).global_position) < radius * 1.7:
+		if enemy is Node3D and global_position.distance_to((enemy as Node3D).global_position) < radius * 3.2:
 			progress = max(0.0, progress - delta * 0.35)
 			return
 
