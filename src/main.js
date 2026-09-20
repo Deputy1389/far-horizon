@@ -16,6 +16,7 @@ const ui = {
   location: document.getElementById('locationLabel'),
   scan: document.getElementById('scanLabel'),
   drones: document.getElementById('droneLabel'),
+  swgAssets: document.getElementById('swgAssetLabel'),
   toast: document.getElementById('toast'),
   prompt: document.getElementById('interactionPrompt'),
   startCard: document.getElementById('startCard'),
@@ -39,6 +40,7 @@ renderer.toneMappingExposure = 1.05;
 document.getElementById('game').appendChild(renderer.domElement);
 
 const materials = await createMaterialLibrary(renderer);
+ui.swgAssets.textContent = materials.swgAssetStatus.label;
 
 scene.add(new THREE.HemisphereLight(0xffd7aa, 0x554738, 2.1));
 const sun = new THREE.DirectionalLight(0xffd2a0, 3.6);
@@ -181,7 +183,14 @@ async function addLocalSwgMesh(){
       child.castShadow=true;
       child.receiveShadow=true;
     });
-    const x=-28,z=1260;
+    // Keep the proof object close to the initial spawn so the local conversion
+    // is visible immediately instead of being hidden in the far outskirts.
+    const x=28,z=1225;
+    const displayPad=new THREE.Mesh(new THREE.CylinderGeometry(18,18,.8,32),materials.pad);
+    displayPad.position.set(x,terrainHeight(x,z)+.4,z);
+    displayPad.receiveShadow=true;
+    displayPad.userData.swgSource='spaceport_concrete.dds';
+    scene.add(displayPad);
     object.position.set(x,terrainHeight(x,z)+.15,z);
     object.scale.setScalar(1.15);
     object.userData.swgSource=proof.virtualPath;

@@ -1,5 +1,6 @@
 import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
 import { DDSLoader } from 'https://esm.sh/three@0.180.0/examples/jsm/loaders/DDSLoader.js';
+import { summarizeSwgAssetLoad, swgMaterialColor } from './assetDiagnostics.mjs';
 
 function seeded(seed=1){
   let s=seed>>>0;
@@ -205,11 +206,19 @@ async function loadLocalSwgTextures(prep){
   let manifest;
   try{
     const response=await fetch('./assets/local-swg/manifest.json',{cache:'no-store'});
-    if(!response.ok)return null;
+    if(!response.ok){
+      window.__farHorizonSwgStatus=summarizeSwgAssetLoad(null,[]);
+      return null;
+    }
     manifest=await response.json();
-  }catch{return null;}
+  }catch{
+    window.__farHorizonSwgStatus=summarizeSwgAssetLoad(null,[]);
+    return null;
+  }
   const loader=new DDSLoader();
   const result={};
+  const loadedRoles=[];
+  const failedRoles=[];
   const entries=Object.entries(manifest.assets||{});
   await Promise.all(entries.map(([role,descriptor])=>new Promise(resolve=>{
     // Manifest v2 records provenance beside the URL. Keep accepting the old
@@ -220,10 +229,16 @@ async function loadLocalSwgTextures(prep){
     loader.load(url,tex=>{
       tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
       tex.colorSpace=role.toLowerCase().includes('normal')?THREE.NoColorSpace:THREE.SRGBColorSpace;
-      prep(tex);result[role]=tex;resolve();
-    },undefined,()=>resolve());
+      prep(tex);result[role]=tex;loadedRoles.push(role);resolve();
+    },undefined,()=>{failedRoles.push(role);console.warn(`SWG DDS failed to decode: ${role}`);resolve();});
   })));
-  return Object.keys(result).length?result:null;
+  const status=summarizeSwgAssetLoad(manifest,loadedRoles);
+  status.failedRoles=failedRoles.sort();
+  window.__farHorizonSwgStatus=status;
+  console.info(`${status.label}${failedRoles.length?` · failed: ${failedRoles.join(', ')}`:''}`);
+  if(!Object.keys(result).length)return null;
+  Object.defineProperty(result,'__status',{value:status,enumerable:false});
+  return result;
 }
 
 export async function createMaterialLibrary(renderer){
@@ -270,13 +285,13 @@ export async function createMaterialLibrary(renderer){
     const roofTex=roofSource?localClone(roofSource,2.4):prep(makeRoof(key,7000+key%991));
     const side=new THREE.MeshStandardMaterial({
       map:sideTex,
-      color:useSwg?new THREE.Color(hex).lerp(new THREE.Color(0xffffff),.72):0xffffff,
+      color:useSwg?0xffffff:new THREE.Color(hex).lerp(new THREE.Color(0xffffff),.72),
       roughness:.93,
       metalness:.01,
     });
     const roof=new THREE.MeshStandardMaterial({
       map:roofTex,
-      color:floor?0xbca98e:0xe0d2bb,
+      color:swgMaterialColor(!!floor,0xe0d2bb),
       roughness:.98,
       metalness:.01,
     });
@@ -288,9 +303,10 @@ export async function createMaterialLibrary(renderer){
   return {
     usesSwgAssets:!!local,
     swgAssetCount:local?Object.keys(local).length:0,
+    swgAssetStatus:local?.__status||window.__farHorizonSwgStatus||summarizeSwgAssetLoad(null,[]),
     terrain:new THREE.MeshStandardMaterial({
       map:terrainMap,
-      color:local?.sand?0xd0a16f:0xffffff,
+      color:swgMaterialColor(!!local?.sand,0xffffff),
       roughness:1,
       metalness:0,
       normalMap:terrainNormal,
@@ -300,16 +316,16 @@ export async function createMaterialLibrary(renderer){
     }),
     rock:new THREE.MeshStandardMaterial({
       map:concrete?localClone(concrete,2.5):rock,
-      color:concrete?0x806854:0xffffff,
+      color:swgMaterialColor(!!concrete,0xffffff),
       roughness:.96,
       metalness:.02
     }),
     building,
     roadTexture:roadMap?localClone(roadMap,3):road,
-    metal:new THREE.MeshStandardMaterial({map:metalMap,color:local?.metal?0xb1aaa0:0xd1d1ca,metalness:.68,roughness:.48}),
-    antenna:new THREE.MeshStandardMaterial({map:metalVentMap,color:local?.metalVents?0xaaa49d:0x55504a,metalness:.75,roughness:.42}),
-    ship:new THREE.MeshStandardMaterial({map:local?.metal?metalMap:ship,color:0xc0c7c8,metalness:.78,roughness:.38,bumpMap:local?.metal?null:ship,bumpScale:.08}),
-    pad:new THREE.MeshStandardMaterial({map:padMap?localClone(padMap,3):pad,color:padMap?0x8f8778:0xc2b9a9,metalness:.3,roughness:.72}),
+    metal:new THREE.MeshStandardMaterial({map:metalMap,color:swgMaterialColor(!!local?.metal,0xd1d1ca),metalness:.68,roughness:.48}),
+    antenna:new THREE.MeshStandardMaterial({map:metalVentMap,color:swgMaterialColor(!!local?.metalVents,0x55504a),metalness:.75,roughness:.42}),
+    ship:new THREE.MeshStandardMaterial({map:local?.metal?metalMap:ship,color:swgMaterialColor(!!local?.metal,0xc0c7c8),metalness:.78,roughness:.38,bumpMap:local?.metal?null:ship,bumpScale:.08}),
+    pad:new THREE.MeshStandardMaterial({map:padMap?localClone(padMap,3):pad,color:swgMaterialColor(!!padMap,0xc2b9a9),metalness:.3,roughness:.72}),
     roadMaterial(w,d){
       const base=roadMap||road;
       const tex=base.clone();
@@ -318,8 +334,8 @@ export async function createMaterialLibrary(renderer){
       tex.anisotropy=maxAniso;tex.needsUpdate=true;
       const detail=roadDetailMap?roadDetailMap.clone():null;
       if(detail){detail.wrapS=detail.wrapT=THREE.RepeatWrapping;detail.repeat.copy(tex.repeat);detail.anisotropy=maxAniso;detail.needsUpdate=true;}
-      return new THREE.MeshStandardMaterial({map:tex,color:roadMap?0x72695f:0xb8aa98,roughness:.98,metalness:.02,bumpMap:detail||(!roadMap?tex:null),bumpScale:detail?0.06:(!roadMap?0.08:0)});
+      return new THREE.MeshStandardMaterial({map:tex,color:swgMaterialColor(!!roadMap,0xb8aa98),roughness:.98,metalness:.02,bumpMap:detail||(!roadMap?tex:null),bumpScale:detail?0.06:(!roadMap?0.08:0)});
     },
-    terminal:new THREE.MeshStandardMaterial({map:metalMap,color:0x74716a,metalness:.62,roughness:.46}),
+    terminal:new THREE.MeshStandardMaterial({map:metalMap,color:swgMaterialColor(!!local?.metal,0x74716a),metalness:.62,roughness:.46}),
   };
 }

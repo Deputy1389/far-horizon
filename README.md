@@ -86,7 +86,9 @@ py tools\import_swg_assets.py
 py -m http.server 8080
 ```
 
-Then open <http://localhost:8080>. The importer scans all TRE path tables, ranks candidates by semantic terms, records the exact archive and virtual path selected for every role, extracts 14 material roles, and creates a local glTF proof mesh from `ins_all_min_moisture_s01_u0_l0.msh`. The browser automatically uses the local sand, normal, Tatooine wall/floor, concrete, road, spaceport and industrial-metal materials. If the manifest is absent or a DDS fails to load, the procedural fallback materials remain active.
+Then open <http://localhost:8080>. The importer scans all TRE path tables, ranks candidates by semantic terms, records the exact archive and virtual path selected for every role, extracts 14 material roles, and creates a local glTF proof mesh from `ins_all_min_moisture_s01_u0_l0.msh`. The browser automatically uses the local sand, normal, Tatooine wall/floor, concrete, road, spaceport and industrial-metal materials. The upper-right HUD reports `SWG LOCAL 14/14` when every manifest DDS decoded; `SWG FALLBACK` means the local manifest is missing, and a partial count identifies a decode failure. The converted moisture-vaporator proof is placed on a concrete display pad near the starting area. If the manifest is absent or a DDS fails to load, the procedural fallback materials remain active.
+
+If the page was already open while pulling a new branch, use `Ctrl+F5` after rerunning the importer so the HTML/module graph is refreshed. The HUD count and browser console line beginning with `SWG LOCAL` are the quickest way to verify that the local client assets are active rather than merely present on disk.
 
 The importer auto-detects common `SWG Restoration` install locations. If yours is elsewhere:
 
