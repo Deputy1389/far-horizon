@@ -40,14 +40,23 @@ func _rebase() -> void:
 	var previous_origin := origin_ecef.duplicate()
 	var old_frame := frame_basis
 	var snapshots: Array[Dictionary] = []
+	var player_planet_velocity := Vector3.ZERO
+	if tracked_body is CharacterBody3D:
+		player_planet_velocity = old_frame * (tracked_body as CharacterBody3D).velocity
 
 	for candidate in get_tree().get_nodes_in_group("planet_anchor"):
 		if candidate is Node3D and candidate != tracked_body and is_instance_valid(candidate):
 			var node := candidate as Node3D
+			var planet_velocity := Vector3.ZERO
+			var has_velocity := node is CharacterBody3D
+			if has_velocity:
+				planet_velocity = old_frame * (node as CharacterBody3D).velocity
 			snapshots.append({
 				"node": node,
 				"ecef": PlanetMath.local_to_ecef(previous_origin, old_frame, node.global_position),
 				"basis": old_frame * node.global_basis,
+				"has_velocity": has_velocity,
+				"planet_velocity": planet_velocity,
 			})
 
 	var player_ecef := PlanetMath.local_to_ecef(previous_origin, old_frame, tracked_body.global_position)
@@ -60,6 +69,8 @@ func _rebase() -> void:
 		frame_basis.inverse() * player_planet_basis,
 		PlanetMath.ecef_to_local(origin_ecef, frame_basis, player_ecef)
 	)
+	if tracked_body is CharacterBody3D:
+		(tracked_body as CharacterBody3D).velocity = frame_basis.inverse() * player_planet_velocity
 
 	for snapshot in snapshots:
 		var node: Node3D = snapshot["node"]
@@ -71,6 +82,8 @@ func _rebase() -> void:
 			frame_basis.inverse() * preserved_basis,
 			PlanetMath.ecef_to_local(origin_ecef, frame_basis, preserved_ecef)
 		)
+		if bool(snapshot["has_velocity"]) and node is CharacterBody3D:
+			(node as CharacterBody3D).velocity = frame_basis.inverse() * (snapshot["planet_velocity"] as Vector3)
 
 	rebased.emit(previous_origin, origin_ecef.duplicate())
 
