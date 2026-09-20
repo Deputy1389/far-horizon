@@ -650,6 +650,15 @@ def normalize_dds_file_for_godot(path: Path) -> bool:
     return changed
 
 
+def is_valid_wav_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(12)
+        return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
+    except OSError:
+        return False
+
+
 def _known_plain_magic(data: bytes) -> bool:
     return data.startswith((b"DDS ", b"RIFF", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
 
