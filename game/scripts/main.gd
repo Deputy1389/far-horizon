@@ -5,6 +5,7 @@ var planet: ProceduralPlanet
 var player: FPSController
 var city: CityGenerator
 var roads: RoadNetwork
+var rebel_outpost: RebelOutpost
 var squads: SquadManager
 var strategy: StrategicSim
 var hud: DebugHud
@@ -53,6 +54,11 @@ func _build_foundation_world() -> void:
 	planet.configure(floating_origin, player)
 	planet.generate_initial()
 	player.global_position = planet.surface_point(0.0, 180.0) + Vector3.UP * 0.08
+
+	rebel_outpost = RebelOutpost.new()
+	rebel_outpost.name = "RebelOutpost"
+	add_child(rebel_outpost)
+	rebel_outpost.configure(planet, Vector2(0.0, 180.0))
 
 	city = CityGenerator.new()
 	city.name = "MosEisleyPrototype"
