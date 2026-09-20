@@ -39,21 +39,27 @@ The old Three.js prototype remains in the repository as a systems/asset-pipeline
 
 ## Run Foundation v0.1
 
-Install Godot 4.3+ and open this repository folder directly as the project.
+Install Godot 4.3+.
 
-From PowerShell, if the Godot executable is on PATH:
+The easiest Windows playtest path is:
 
 ```powershell
 cd $HOME\far-horizon
 git switch chatgpt/foundation-v0.1
 git pull --ff-only
-godot --editor --path .
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Play-Foundation.ps1
 ```
 
-Press **F6/F5** in the editor, or run:
+The launcher auto-finds a WinGet Godot installation, prepares local SWG assets when the manifest is missing, and launches the game directly.
+
+Useful launcher options:
 
 ```powershell
-godot --path .
+# Open the editor instead of immediately playing.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Play-Foundation.ps1 -Editor
+
+# Re-extract SWG assets and rebuild Godot-safe textures.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Play-Foundation.ps1 -RefreshAssets -CleanImport
 ```
 
 Controls:
@@ -132,7 +138,7 @@ The pipeline currently understands enough of the local client to:
 - convert the weighted Stormtrooper MGN + skeleton + selected animations to a skinned glTF;
 - preserve asset provenance in the generated manifest.
 
-Generated client assets stay under `assets/local-swg/` and are gitignored. Godot's enemy visual bridge uses the generated Stormtrooper scene when it is importable and otherwise keeps a functional placeholder.
+Generated client assets stay under `assets/local-swg/` and are gitignored. Original SWG DDS files are retained for provenance/browser use, while the importer also emits Godot-safe PNG derivatives because modern Godot validates some legacy SWG DDS headers more strictly. Godot's enemy visual bridge uses the generated Stormtrooper scene and PNG material derivatives when they are importable and otherwise keeps functional placeholders.
 
 The browser prototype can still be served with:
 
