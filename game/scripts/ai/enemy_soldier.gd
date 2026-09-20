@@ -24,6 +24,8 @@ var gravity := 18.0
 
 var visual_root := Node3D.new()
 var muzzle := Marker3D.new()
+var animation_player: AnimationPlayer
+var active_animation := ""
 
 func configure(player_ref: Node3D, manager: SquadManager, id: String, spawn_position: Vector3) -> void:
 	player = player_ref
@@ -60,6 +62,10 @@ func _build_visual() -> void:
 	var imported := SwgAssetBridge.instantiate_stormtrooper()
 	if imported != null:
 		visual_root.add_child(imported)
+		var animation_players := imported.find_children("*", "AnimationPlayer", true, false)
+		if not animation_players.is_empty():
+			animation_player = animation_players[0] as AnimationPlayer
+			_set_animation("idle")
 	else:
 		var mesh_instance := MeshInstance3D.new()
 		var capsule := CapsuleMesh.new()
@@ -94,6 +100,7 @@ func _physics_process(delta: float) -> void:
 		_patrol_update(delta)
 
 	move_and_slide()
+	_update_animation()
 
 func _update_perception() -> void:
 	if player == null or not is_instance_valid(player):
@@ -140,7 +147,7 @@ func _combat_update(delta: float) -> void:
 	var move_direction := desired - global_position
 	move_direction.y = 0.0
 	if move_direction.length() > 2.0:
-		move_direction = move_direction.normalized()
+		move_direction = _avoid_obstacle(move_direction.normalized())
 		velocity.x = move_toward(velocity.x, move_direction.x * move_speed, move_speed * 5.0 * delta)
 		velocity.z = move_toward(velocity.z, move_direction.z * move_speed, move_speed * 5.0 * delta)
 	else:
@@ -175,7 +182,7 @@ func _patrol_update(delta: float) -> void:
 	if delta_to_target.length() < 1.6:
 		_choose_patrol_target()
 		return
-	var direction := delta_to_target.normalized()
+	var direction := _avoid_obstacle(delta_to_target.normalized())
 	velocity.x = move_toward(velocity.x, direction.x * move_speed * 0.55, move_speed * 3.0 * delta)
 	velocity.z = move_toward(velocity.z, direction.z * move_speed * 0.55, move_speed * 3.0 * delta)
 	var desired_yaw := atan2(-direction.x, -direction.z)
@@ -200,3 +207,44 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Ve
 		squad_manager.member_died(self, squad_id)
 		killed.emit(self)
 		queue_free()
+
+func _avoid_obstacle(direction: Vector3) -> Vector3:
+	if direction.length_squared() < 0.001:
+		return direction
+	var from := global_position + Vector3.UP * 0.85
+	var query := PhysicsRayQueryParameters3D.create(from, from + direction * 1.55)
+	query.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return direction
+	var side := Vector3.UP.cross(direction).normalized()
+	if squad_role == "flank_right":
+		side = -side
+	elif squad_role == "suppress" and rng.randf() > 0.5:
+		side = -side
+	return (direction * 0.35 + side).normalized()
+
+func _update_animation() -> void:
+	if animation_player == null:
+		return
+	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	if planar_speed < 0.25:
+		_set_animation("idle")
+	elif target != null and is_instance_valid(target):
+		_set_animation("run")
+	else:
+		_set_animation("walk")
+
+func _set_animation(requested: String) -> void:
+	if animation_player == null or active_animation == requested:
+		return
+	var selected := requested
+	if not animation_player.has_animation(selected):
+		for candidate in animation_player.get_animation_list():
+			if String(candidate).to_lower().contains(requested):
+				selected = String(candidate)
+				break
+	if not animation_player.has_animation(selected):
+		return
+	active_animation = requested
+	animation_player.play(selected, 0.15)
