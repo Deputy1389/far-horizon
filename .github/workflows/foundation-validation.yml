@@ -30,6 +30,10 @@ jobs:
             godot --headless --path . --check-only --script "res://$script"
           done < <(find game/scripts -type f -name '*.gd' | sort)
 
+      - name: Foundation architecture contracts
+        run: |
+          godot --headless --path . --script res://game/tests/foundation_contracts.gd
+
       - name: Boot the playable foundation
         run: |
           godot --headless --path . --quit-after 180
