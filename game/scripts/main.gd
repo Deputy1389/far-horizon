@@ -53,6 +53,8 @@ func _build_foundation_world() -> void:
 	planet.name = "ProceduralPlanet"
 	add_child(planet)
 	planet.configure(floating_origin, player)
+	planet.add_dressing_exclusion(Vector2(0.0, 180.0), 65.0)
+	planet.add_dressing_exclusion(Vector2(0.0, -260.0), 390.0)
 	planet.generate_initial()
 	player.global_position = planet.surface_point(0.0, 180.0) + Vector3.UP * 0.08
 
