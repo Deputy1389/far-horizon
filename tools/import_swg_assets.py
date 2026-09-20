@@ -13,6 +13,7 @@ from typing import Any, Iterable
 
 try:
     from swg_twofish import decrypt_twofish_ecb
+from dds_png import DDSDecodeError, dds_to_png_file
 except ImportError:  # pragma: no cover - supports importing as tools.import_swg_assets
     from tools.swg_twofish import decrypt_twofish_ecb
 
@@ -766,6 +767,12 @@ def main() -> int:
     output_root = project_root / "assets" / "local-swg"
     texture_root = output_root / "texture"
     texture_root.mkdir(parents=True, exist_ok=True)
+    # Keep original DDS files for the browser pipeline, but do not make Godot
+    # try to import them. Some SWG-era DDS variants are accepted by the old
+    # client/Three.js but rejected by current Godot DDS validation.
+    (texture_root / ".gdignore").write_text("", encoding="utf-8")
+    godot_texture_root = output_root / "godot" / "texture"
+    godot_texture_root.mkdir(parents=True, exist_ok=True)
 
     manifest_assets: dict[str, dict[str, Any]] = {}
     selections: dict[str, dict[str, Any]] = {}
@@ -815,7 +822,17 @@ def main() -> int:
                 continue
 
             url = f"./assets/local-swg/texture/{destination.name}"
+            godot_url = ""
+            try:
+                godot_destination = godot_texture_root / f"{role}.png"
+                dds_to_png_file(destination, godot_destination)
+                godot_url = f"./assets/local-swg/godot/texture/{godot_destination.name}"
+            except (OSError, DDSDecodeError, ValueError) as exc:
+                print(f"WARN   {role}: could not build Godot PNG fallback: {exc}")
+
             manifest_assets[role] = build_manifest_asset(entry, url)
+            if godot_url:
+                manifest_assets[role]["godotUrl"] = godot_url
             manifest_assets[role]["sourceKind"] = source_kind
             if loose_path is not None:
                 manifest_assets[role]["sourcePath"] = str(loose_path.relative_to(source).as_posix())
@@ -1006,6 +1023,10 @@ def main() -> int:
                 shader_texture_paths.update(shader_paths)
 
             character_texture_root = character_root / "texture"
+            character_texture_root.mkdir(parents=True, exist_ok=True)
+            (character_texture_root / ".gdignore").write_text("", encoding="utf-8")
+            character_godot_texture_root = output_root / "godot" / "character" / role
+            character_godot_texture_root.mkdir(parents=True, exist_ok=True)
             character_textures: dict[str, dict[str, Any]] = {}
             failed_texture_paths: dict[str, str] = {}
             for shader_texture_path in sorted(shader_texture_paths):
@@ -1029,7 +1050,17 @@ def main() -> int:
                     destination.unlink(missing_ok=True)
                     continue
                 url = f"./assets/local-swg/character/{role}/texture/{destination.name}"
+                godot_url = ""
+                try:
+                    godot_destination = character_godot_texture_root / f"{Path(shader_texture_path).stem}.png"
+                    dds_to_png_file(destination, godot_destination)
+                    godot_url = f"./assets/local-swg/godot/character/{role}/{godot_destination.name}"
+                except (OSError, DDSDecodeError, ValueError) as exc:
+                    failed_texture_paths[shader_texture_path] = f"Godot PNG conversion failed: {exc}"
+
                 descriptor = build_manifest_asset(texture_entry, url)
+                if godot_url:
+                    descriptor["godotUrl"] = godot_url
                 descriptor["sourceKind"] = source_kind
                 if loose_path is not None:
                     descriptor["sourcePath"] = str(loose_path.relative_to(source).as_posix())
@@ -1091,7 +1122,7 @@ def main() -> int:
 
     print()
     print(f"Imported {imported}/{len(ROLE_RULES)} curated SWG material roles.")
-    print("DDS compatibility: normalized legacy linear-size headers for modern Godot when needed.")
+    print("DDS compatibility: original DDS retained for browser use; Godot-safe PNG fallbacks generated when supported.")
     if failures:
         print("Roles without a usable candidate:")
         for role, reason in failures.items():
