@@ -27,10 +27,10 @@
 
 ## Phase 3: mesh proof boundary
 
-8. Add a small mesh-candidate report and an external-converter hook for one
-   selected `.msh`/`.lod`/`.pob` path. If the local conversion dependency is
-   unavailable, document the dependency chain and do not make it block texture
-   extraction.
+8. Add a small mesh-candidate report and a local static-MSH-to-glTF proof for
+   one selected Tatooine industrial object. Keep full `.sht`/`.lod`/`.apt`/`.pob`
+   appearance resolution as a documented next boundary without making it block
+   texture extraction.
 
 ## Phase 4: verification and delivery
 

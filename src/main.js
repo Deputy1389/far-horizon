@@ -1,4 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
+import { GLTFLoader } from 'https://esm.sh/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
 import { CharacterState, RESOURCE_CATALOG } from './systems.js';
 import { createSystemsUI } from './ui.js';
 import { createMaterialLibrary } from './materials.js';
@@ -160,6 +161,38 @@ function buildCity() {
   }
 }
 
+async function addLocalSwgMesh(){
+  if(!materials.usesSwgAssets)return;
+  try{
+    const response=await fetch('./assets/local-swg/manifest.json',{cache:'no-store'});
+    if(!response.ok)return;
+    const manifest=await response.json();
+    const proof=manifest.meshProof;
+    if(!proof?.url)return;
+    const loader=new GLTFLoader();
+    const gltf=await new Promise((resolve,reject)=>loader.load(proof.url,resolve,undefined,reject));
+    const object=gltf.scene;
+    object.traverse(child=>{
+      if(!child.isMesh)return;
+      // The glTF keeps the real SWG shader-group boundaries and UVs. The
+      // browser-side material deliberately resolves those groups through the
+      // local DDS library instead of asking a browser to decode .sht files.
+      child.material=materials.metal;
+      child.castShadow=true;
+      child.receiveShadow=true;
+    });
+    const x=-28,z=1260;
+    object.position.set(x,terrainHeight(x,z)+.15,z);
+    object.scale.setScalar(1.15);
+    object.userData.swgSource=proof.virtualPath;
+    object.userData.swgArchive=proof.archive;
+    scene.add(object);
+    console.info(`Loaded local SWG mesh ${proof.virtualPath} from ${proof.archive}`);
+  }catch(error){
+    console.warn('Local SWG mesh proof could not be loaded; continuing with procedural geometry.',error);
+  }
+}
+
 function addShip(x,y,z,rot=0,scale=1){
   const group=new THREE.Group();
   const body=new THREE.Mesh(new THREE.BoxGeometry(30,6,70),materials.ship); group.add(body);
@@ -224,6 +257,12 @@ let lastSample=-99;
 let camp=null;
 let campHealTimer=0;
 function toast(msg){ ui.toast.textContent=msg; ui.toast.style.opacity=1; toastTimer=2.4; }
+function requestPointerLockSafe(){
+  try{
+    const result=renderer.domElement.requestPointerLock();
+    if(result&&typeof result.catch==='function')result.catch(()=>{});
+  }catch{}
+}
 
 const systemsUI=createSystemsUI({
   character,
@@ -256,13 +295,13 @@ document.addEventListener('mousemove',e=>{
 document.addEventListener('pointerlockchange',()=>pointerLocked=document.pointerLockElement===renderer.domElement);
 renderer.domElement.addEventListener('mousedown',e=>{
   if(systemsUI.isOpen)return;
-  if(!pointerLocked){renderer.domElement.requestPointerLock();return;}
+  if(!pointerLocked){requestPointerLockSafe();return;}
   if(e.button===0) fire();
 });
 ui.startButton.addEventListener('click',()=>{
   ui.startCard.classList.add('hidden');
   gameStarted=true;
-  renderer.domElement.requestPointerLock();
+  requestPointerLockSafe();
 });
 
 const interactionPoints=[];
@@ -556,7 +595,7 @@ function addAtmosphere(){
   const moon=new THREE.Mesh(new THREE.SphereGeometry(28,18,12),new THREE.MeshBasicMaterial({color:0xf1c88f})); moon.position.set(-850,440,-2300); scene.add(moon);
 }
 
-buildTerrain(); buildCity(); buildSkyTraffic(); buildCrowd(); buildHubs(); buildResourceMeshes(); spawnDrones(); addAtmosphere();
+buildTerrain(); buildCity(); await addLocalSwgMesh(); buildSkyTraffic(); buildCrowd(); buildHubs(); buildResourceMeshes(); spawnDrones(); addAtmosphere();
 player.position.set(40,terrainHeight(40,1150),1150);
 
 const clock=new THREE.Clock();

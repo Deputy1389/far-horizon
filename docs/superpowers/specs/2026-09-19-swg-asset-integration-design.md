@@ -21,13 +21,14 @@ the deterministic fallback.
   material fallbacks, so the integration should preserve that API and extend
   the manifest format rather than replace the renderer.
 - Static SWG mesh conversion has a larger dependency chain (IFF/APT/LOD/POB,
-  MSH parsing, material references, and a glTF exporter). This pass will add a
-  catalog/diagnostic boundary for meshes and a conversion hook, but texture
-  extraction is the completion-critical path.
+  MSH parsing, material references, and a glTF exporter). A narrow static MSH
+  proof is tractable: the checked-out SWG reference implementation documents
+  the vertex/index layout, so the importer now converts one moisture vaporator
+  MSH while leaving the complete appearance/shader chain for a later pass.
 
 ## Importer architecture
 
-`tools/import_swg_assets.py` will expose small, testable stages:
+`tools/import_swg_assets.py` exposes small, testable stages:
 
 1. Discover a source root and parse every TRE index.
 2. Build a deterministic virtual-path inventory with archive provenance.
@@ -37,7 +38,8 @@ the deterministic fallback.
 4. Decode a selected entry from a loose file or TRE. TRE data is read through
    the Restoration Twofish-ECB decryptor when needed, padded to complete blocks,
    then zlib-decoded according to the TOC compression flag.
-5. Copy only browser-compatible outputs below `assets/local-swg/` and write a
+5. Copy only browser-compatible outputs below `assets/local-swg/`, convert the
+   selected static MSH proof to local glTF, and write a
    manifest containing role, URL, archive, virtual path, size, decoder, and
    alternatives. The output directory remains ignored by Git.
 6. Print search and extraction diagnostics, including the exact archive and
@@ -59,11 +61,13 @@ procedural materials, so one bad local entry cannot remove the playable scene.
 ## Mesh boundary
 
 The importer will catalog useful `.msh`, `.lod`, `.pob`, and `.apt` paths and
-record their archive provenance. A conversion command will accept one selected
-mesh and use an installed external converter (when supplied) to produce GLB;
-without that dependency it reports the exact missing step. The browser-side
-asset catalog is structured so a future converted GLB can be shown without
-changing procedural city generation.
+record their archive provenance. `tools/convert_swg_mesh.py` parses the static
+`FORM MESH` subset (positions, normals, UV0, indices and shader-group names)
+and writes glTF 2.0. The default proof is
+`appearance/mesh/ins_all_min_moisture_s01_u0_l0.msh`; the browser loads it and
+applies the local industrial DDS material. Full `.sht` shader resolution,
+`.lod` selection, `.apt` appearance chains and `.pob` building composition
+remain the next dependency boundary.
 
 ## Validation
 

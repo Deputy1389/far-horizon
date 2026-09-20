@@ -75,14 +75,18 @@ First procedural terrain/city, third-person controls, drones and survey proof.
 
 ## Using original SWG client textures
 
-Far Horizon can use a curated set of original SWG DDS textures from a **local SWG Restoration/client installation**. The original stock environment textures live in the client's TRE archives, so they are imported locally and are deliberately excluded from this Git repository.
+Far Horizon can use a curated set of original SWG DDS textures from a **local SWG Restoration/client installation**. The original environment textures live in encrypted TRE archives, so they are decoded locally and are deliberately excluded from this Git repository.
 
-After pulling the latest code, run:
+The normal PowerShell workflow is:
 
 ```powershell
 cd $HOME\far-horizon
+git pull --ff-only
 py tools\import_swg_assets.py
+py -m http.server 8080
 ```
+
+Then open <http://localhost:8080>. The importer scans all TRE path tables, ranks candidates by semantic terms, records the exact archive and virtual path selected for every role, extracts 14 material roles, and creates a local glTF proof mesh from `ins_all_min_moisture_s01_u0_l0.msh`. The browser automatically uses the local sand, normal, Tatooine wall/floor, concrete, road, spaceport and industrial-metal materials. If the manifest is absent or a DDS fails to load, the procedural fallback materials remain active.
 
 The importer auto-detects common `SWG Restoration` install locations. If yours is elsewhere:
 
@@ -90,6 +94,17 @@ The importer auto-detects common `SWG Restoration` install locations. If yours i
 py tools\import_swg_assets.py --source "D:\Games\SWG Restoration"
 ```
 
-It currently looks for a small Tatooine-oriented set including the original sand, structure wall/floor, concrete and industrial metal DDS textures. The browser build automatically detects `assets/local-swg/manifest.json` and uses the imported DDS files; if the manifest is absent, it falls back to the procedural prototype materials.
+Useful inventory searches do not depend on guessed full filenames:
+
+```powershell
+py tools\import_swg_assets.py --source "C:\SWG Restoration" --search tatooine sand --extension .dds --limit 30
+py tools\import_swg_assets.py --source "C:\SWG Restoration" --search mos eisley wall --extension .dds --limit 30
+py tools\import_swg_assets.py --source "C:\SWG Restoration" --search industrial metal --extension .dds --limit 30
+py tools\import_swg_assets.py --source "C:\SWG Restoration" --mesh-report --limit 40
+```
+
+The local decoder handles the Restoration TRE protection chain (Twofish-128 ECB followed by zlib) and validates the extracted files as real DDS/IFF payloads. The mesh proof currently supports the static `FORM MESH` subset used by `.msh` files: vertex positions/normals/UV0, index buffers, shader-group names and glTF output. It intentionally does not pretend to resolve the full SWG `.sht` shader graph, `.lod` hierarchy, `.apt` appearance chain or `.pob` building layout; those are catalogued in `assets/local-swg/asset-catalog.json` for the next conversion pass.
+
+The generated manifest shape is documented in [`docs/local-swg-manifest.schema.json`](docs/local-swg-manifest.schema.json).
 
 Imported SWG files live under `assets/local-swg/` and are gitignored.
