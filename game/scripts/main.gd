@@ -110,7 +110,14 @@ func _spawn_speeder() -> void:
 func _respawn_player() -> void:
 	player.restore_full_health()
 	player.velocity = Vector3.ZERO
-	player.global_position = planet.surface_point(0.0, 430.0) + Vector3.UP * 0.08
+	var rebel_node: Dictionary = strategy.nodes.get("rebel_outpost", {})
+	if not rebel_node.is_empty():
+		var base_ecef: PackedFloat64Array = rebel_node["planet_position"]
+		var base_local := floating_origin.local_position(base_ecef)
+		base_local.y = planet.surface_y(base_local.x, base_local.z)
+		player.global_position = base_local + Vector3.UP * 0.08
+	else:
+		player.global_position = planet.surface_point(0.0, 430.0) + Vector3.UP * 0.08
 	strategy.apply_local_result("rebel_outpost", "imperial", 4.0)
 	strategy.event_logged.emit("You redeployed at the Rebel outpost. The failed assault cost local strength.")
 
