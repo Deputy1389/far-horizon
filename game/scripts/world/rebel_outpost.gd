@@ -65,6 +65,16 @@ func _build_outpost() -> void:
 	# Small bunker shell behind the spawn gives the outpost a recognizable base.
 	_add_box(Vector2(0.0, 27.0), Vector3(15.0, 3.4, 8.0), sandbag_material)
 	_add_box(Vector2(0.0, 22.7), Vector3(5.0, 0.35, 1.1), metal_material)
+	_place_imported_props()
+
+func _place_imported_props() -> void:
+	for offset in [Vector2(-25.0, 21.0), Vector2(24.0, 19.0)]:
+		var prop := SwgAssetBridge.instantiate_mesh_proof()
+		if prop == null:
+			return
+		prop.position = _surface_local(offset.x, offset.y)
+		prop.scale = Vector3.ONE * 1.1
+		add_child(prop)
 
 func _add_tunnel(offset: Vector2, clearance: float, length: float) -> void:
 	var width := 2.0
