@@ -20,14 +20,21 @@ func _ready() -> void:
 func _build_environment() -> void:
 	var environment_node := WorldEnvironment.new()
 	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color(0.36, 0.22, 0.14)
+	var sky := Sky.new()
+	var sky_material := ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color(0.22, 0.39, 0.62)
+	sky_material.sky_horizon_color = Color(0.88, 0.58, 0.34)
+	sky_material.ground_horizon_color = Color(0.49, 0.31, 0.20)
+	sky_material.ground_bottom_color = Color(0.17, 0.11, 0.08)
+	sky.sky_material = sky_material
+	environment.background_mode = Environment.BG_SKY
+	environment.sky = sky
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.86, 0.66, 0.5)
 	environment.ambient_light_energy = 0.72
 	environment.fog_enabled = true
 	environment.fog_light_color = Color(0.69, 0.47, 0.31)
-	environment.fog_density = 0.00045
+	environment.fog_density = 0.00058
 	environment_node.environment = environment
 	add_child(environment_node)
 
@@ -37,6 +44,13 @@ func _build_environment() -> void:
 	sun.light_energy = 1.35
 	sun.shadow_enabled = true
 	add_child(sun)
+
+	var second_sun := DirectionalLight3D.new()
+	second_sun.rotation_degrees = Vector3(-28.0, 34.0, 0.0)
+	second_sun.light_color = Color(1.0, 0.56, 0.32)
+	second_sun.light_energy = 0.22
+	second_sun.shadow_enabled = false
+	add_child(second_sun)
 
 func _build_foundation_world() -> void:
 	floating_origin = FloatingOrigin.new()
