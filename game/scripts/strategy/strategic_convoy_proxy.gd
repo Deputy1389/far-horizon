@@ -22,7 +22,7 @@ func configure(sim: StrategicSim, id: String, faction_name: String, initial_stre
 func _build_visual() -> void:
 	var collision := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(2.4, 1.3, 5.0)
+	box.size = Vector3(2.4, 1.3, 17.0)
 	collision.shape = box
 	collision.position.y = 1.0
 	add_child(collision)
