@@ -52,6 +52,7 @@ func _physics_process(delta: float) -> void:
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		global_position = hit["position"]
+		_spawn_impact(hit["position"] as Vector3, hit["normal"] as Vector3)
 		var collider: Variant = hit.get("collider")
 		if collider != null and collider.has_method("apply_damage"):
 			collider.apply_damage(damage, hit["position"], velocity.normalized(), source)
@@ -60,3 +61,34 @@ func _physics_process(delta: float) -> void:
 		return
 
 	global_position = to
+
+
+func _spawn_impact(position: Vector3, normal: Vector3) -> void:
+	var impact := Node3D.new()
+	get_tree().current_scene.add_child(impact)
+	impact.global_position = position + normal * 0.025
+
+	var spark := MeshInstance3D.new()
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.055
+	mesh.height = 0.11
+	mesh.radial_segments = 6
+	mesh.rings = 3
+	spark.mesh = mesh
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(1.0, 0.45, 0.08)
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.09, 0.01)
+	material.emission_energy_multiplier = 12.0
+	spark.material_override = material
+	impact.add_child(spark)
+
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.18, 0.03)
+	light.light_energy = 1.8
+	light.omni_range = 2.2
+	impact.add_child(light)
+
+	var timer := get_tree().create_timer(0.075)
+	timer.timeout.connect(impact.queue_free)
