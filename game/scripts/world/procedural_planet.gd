@@ -50,6 +50,15 @@ func _setup_noise() -> void:
 func _setup_material() -> void:
 	sand_material.albedo_color = Color(0.56, 0.36, 0.2)
 	sand_material.roughness = 0.96
+	var imported_sand := SwgAssetBridge.texture_for_role("sand")
+	if imported_sand != null:
+		sand_material.albedo_texture = imported_sand
+		sand_material.albedo_color = Color.WHITE
+	var imported_normal := SwgAssetBridge.texture_for_role("sandNormal")
+	if imported_normal != null:
+		sand_material.normal_enabled = true
+		sand_material.normal_texture = imported_normal
+		sand_material.normal_scale = 0.55
 
 func generate_initial() -> void:
 	_update_chunks(true)
