@@ -98,7 +98,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			head.rotation.y = vehicle_look_yaw
 		else:
 			rotate_y(-mouse.relative.x * mouse_sensitivity)
-		pitch = clamp(pitch - mouse.relative.y * mouse_sensitivity, deg_to_rad(-88.0), deg_to_rad(88.0))
+		pitch = clampf(pitch - mouse.relative.y * mouse_sensitivity, deg_to_rad(-88.0), deg_to_rad(88.0))
 		head.rotation.x = pitch
 	elif event.is_action_pressed("pause_mouse"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
@@ -236,7 +236,7 @@ func _try_begin_mantle() -> bool:
 	if not space.intersect_ray(high_query).is_empty():
 		return false
 
-	var ledge_probe := wall_hit["position"] + forward * 0.42 + Vector3.UP * (mantle_height + 0.55)
+	var ledge_probe: Vector3 = (wall_hit["position"] as Vector3) + forward * 0.42 + Vector3.UP * (mantle_height + 0.55)
 	var down_query := PhysicsRayQueryParameters3D.create(ledge_probe, ledge_probe + Vector3.DOWN * (mantle_height + 0.8))
 	down_query.exclude = [get_rid()]
 	var top_hit := space.intersect_ray(down_query)
@@ -256,8 +256,8 @@ func _try_begin_mantle() -> bool:
 
 func _update_mantle(delta: float) -> void:
 	mantle_elapsed += delta
-	var t := clamp(mantle_elapsed / mantle_duration, 0.0, 1.0)
-	var smooth := t * t * (3.0 - 2.0 * t)
+	var t: float = clampf(mantle_elapsed / mantle_duration, 0.0, 1.0)
+	var smooth: float = t * t * (3.0 - 2.0 * t)
 	global_position = mantle_start.lerp(mantle_end, smooth)
 	if t >= 1.0:
 		mantle_active = false
@@ -306,7 +306,7 @@ func _update_vehicle_mode() -> void:
 		head.position.y = lerpf(head.position.y, 0.12, 0.35)
 
 func add_recoil(pitch_degrees: float, yaw_degrees: float) -> void:
-	pitch = clamp(pitch - deg_to_rad(pitch_degrees), deg_to_rad(-88.0), deg_to_rad(88.0))
+	pitch = clampf(pitch - deg_to_rad(pitch_degrees), deg_to_rad(-88.0), deg_to_rad(88.0))
 	head.rotation.x = pitch
 	rotate_y(deg_to_rad(yaw_degrees))
 
