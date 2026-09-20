@@ -6,20 +6,151 @@ import os
 import struct
 import sys
 import zlib
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Iterable
 
-TARGETS = {
-    "sand": "texture/tatt_sand_bumpy_a1.dds",
-    "sandNormal": "texture/tatt_sand_bumpy_a1_n.dds",
-    "wall": "texture/tatt_stco_player_wall.dds",
-    "wallDetail": "texture/tatt_stco_player_wall_detlb.dds",
-    "floor": "texture/tatt_stco_player_floor_c.dds",
-    "capitalWall": "texture/intr_cptl_tatt_wall_trim_a1.dds",
-    "capitalStair": "texture/intr_cptl_tatt_stair.dds",
-    "concrete": "texture/impl_concrete_a.dds",
-    "concreteDetail": "texture/impl_concrete_detail_a.dds",
-    "metal": "texture/ins_all_metl_gray.dds",
-    "metalVents": "texture/ins_all_metl_gray_vents_a1.dds",
+try:
+    from swg_twofish import decrypt_twofish_ecb
+except ImportError:  # pragma: no cover - supports importing as tools.import_swg_assets
+    from tools.swg_twofish import decrypt_twofish_ecb
+
+
+# This is the 128-bit key passed to Crypto::TwofishDecryptor by the Restoration
+# client. It is used only to decode files from the user's local installation;
+# no client payloads are stored in this repository.
+RESTORATION_TWOFISH_KEY = bytes.fromhex("c73de04390a460725784c1e737ff67bb")
+
+
+@dataclass(frozen=True)
+class AssetEntry:
+    virtual_path: str
+    archive: Path
+    metadata: dict[str, Any]
+
+    @property
+    def extension(self) -> str:
+        return Path(self.virtual_path).suffix.lower()
+
+    @property
+    def archive_rank(self) -> int:
+        return int(self.metadata.get("archive_rank", 0))
+
+
+STATIC_ASSET_EXTENSIONS = {".msh", ".lod", ".pob", ".apt"}
+MESH_KEYWORDS = (
+    "tato",
+    "tatt",
+    "mos",
+    "eisley",
+    "starport",
+    "moisture",
+    "vapor",
+    "jabba",
+    "pipe",
+    "cafe",
+    "house",
+    "industrial",
+)
+
+CHARACTER_MESH_RULES: dict[str, dict[str, Any]] = {
+    "stormtrooper": {
+        "include": {"stormtrooper": 120, "trooper": 36, "statue": 70, "frn": 24, "l0": 12},
+        "exclude": ("helmet", "toy", "weapon", "gun", "pile", "painting", "decor", "hook", "badge"),
+        "require_any": ("stormtrooper", "trooper"),
+    },
+}
+
+
+# Rules deliberately use semantic fragments instead of a list of guessed full
+# filenames. The importer ranks the complete local path inventory, so a client
+# patch can rename or add a more appropriate material without code changes.
+ROLE_RULES: dict[str, dict[str, Any]] = {
+    "sand": {
+        "include": {"tatt": 40, "sand": 32, "bumpy": 24, "desert": 12, "dune": 10, "terrain": 6},
+        "preferred": ["texture/tatt_sand_bumpy_a1", "texture/tatt_sand_bumpy", "texture/generic_tatooine_floor"],
+        "exclude": ["_n", "normal", "_spec", "spec", "_cn", "_dirt", "detail", "mask"],
+        "require_any": ["sand", "desert", "dune"],
+    },
+    "sandNormal": {
+        "include": {"tatt": 40, "sand": 32, "bumpy": 24, "normal": 18, "_n": 18, "desert": 8},
+        "preferred": ["texture/tatt_sand_bumpy_a1_n", "texture/tatt_sand_bumpy_n", "sand_bumpy_n"],
+        "exclude": ["_spec", "spec", "_cn", "_dirt", "detail", "mask"],
+        "require_any": ["_n", "normal"],
+    },
+    "wall": {
+        "include": {"tatt": 34, "wall": 34, "stucco": 24, "stco": 24, "tato": 10, "desert": 5},
+        "preferred": ["texture/tatt_stco_player_wall", "texture/tato_bank_wall_base", "texture/intr_cptl_tatt_wall_a1"],
+        "exclude": ["trim", "_n", "normal", "_spec", "spec", "_dirt", "detail", "deco", "floor"],
+        "require_any": ["wall", "stucco", "stco"],
+    },
+    "wallDetail": {
+        "include": {"tatt": 30, "wall": 30, "stco": 25, "detail": 24, "detl": 24, "dirt": 8, "deco": 6},
+        "preferred": ["texture/tatt_stco_player_wall_detlb", "texture/tatt_stco_player_wall_detla", "wall_detail"],
+        "exclude": ["_n", "normal", "_spec", "spec", "mask", "floor"],
+        "require_any": ["detail", "detl", "dirt", "deco"],
+    },
+    "floor": {
+        "include": {"tatt": 28, "floor": 36, "tile": 24, "tato": 10, "intr": 8, "stucco": 4},
+        "preferred": ["texture/tatt_stco_player_floor_c", "texture/tatt_stco_player_floor", "texture/tato_floor_tilea", "texture/intr_cptl_tatt_floor"],
+        "exclude": ["_n", "normal", "_spec", "spec", "detail", "_dirt", "mask"],
+        "require_any": ["floor", "tile"],
+    },
+    "capitalWall": {
+        "include": {"intr": 16, "cptl": 34, "tatt": 28, "wall": 30, "trim": 18, "stucco": 16, "tato": 8},
+        "preferred": ["texture/intr_cptl_tatt_wall_trim", "texture/intr_cptl_tatt_wall_a1", "texture/tato_bank_wall_base"],
+        "exclude": ["_n", "normal", "_spec", "spec", "_dirt", "detail", "deco", "floor"],
+        "require_any": ["wall", "trim", "stucco"],
+    },
+    "capitalStair": {
+        "include": {"intr": 18, "cptl": 30, "tatt": 28, "stair": 48, "step": 38, "floor": 6},
+        "preferred": ["texture/intr_cptl_tatt_stair", "texture/intr_cptl_tatt_floor"],
+        "exclude": ["_n", "normal", "_spec", "spec", "detail", "mask"],
+        "require_any": ["stair", "step"],
+    },
+    "concrete": {
+        "include": {"concrete": 44, "impl": 24, "cncr": 22, "tato": 14, "spaceport": 12, "slab": 10, "industrial": 8},
+        "preferred": ["texture/impl_concrete_a", "texture/tato_concretea", "texture/spaceport_concrete"],
+        "exclude": ["detail", "_n", "normal", "_spec", "spec", "rubble", "_dirt", "mask"],
+        "require_any": ["concrete", "cncr", "spaceport", "impl"],
+    },
+    "concreteDetail": {
+        "include": {"concrete": 34, "detail": 42, "impl": 24, "rubble": 20, "dirt": 12, "cncr": 12},
+        "preferred": ["texture/impl_concrete_detail_a", "texture/impl_concrete_a_rubble", "texture/spaceport_concrete_dirt"],
+        "exclude": ["_n", "normal", "_spec", "spec", "mask"],
+        "require_any": ["detail", "rubble", "dirt", "concrete"],
+    },
+    "metal": {
+        "include": {"metal": 38, "metl": 38, "ins": 24, "industrial": 18, "impl": 8, "gray": 8, "pipe": 6},
+        "preferred": ["texture/ins_all_metl_gray", "texture/all_metal_streaked", "texture/all_metl_impl_gate", "texture/tato_fallen_star_metal_plates"],
+        "exclude": ["vents", "vent", "_n", "normal", "_spec", "spec", "detail", "rust", "dirt"],
+        "require_any": ["metal", "metl", "ins", "industrial"],
+    },
+    "metalVents": {
+        "include": {"metal": 32, "metl": 32, "vents": 38, "vent": 38, "ins": 22, "grate": 24, "panel": 18, "industrial": 14},
+        "preferred": ["texture/ins_all_metl_gray_vents_a1", "texture/tatt_metl_floor_roundgrate", "texture/tatt_ming_hydro_vap_metalpanel"],
+        "exclude": ["_n", "normal", "_spec", "spec", "mask"],
+        "require_any": ["vents", "vent", "grate", "panel", "metal", "metl"],
+    },
+    "road": {
+        "include": {"road": 46, "rock": 18, "tato": 16, "concrete": 16, "asphalt": 18, "sand": 6, "slab": 6},
+        "preferred": ["texture/rock_tato_road", "texture/tato_concretea", "texture/spaceport_concrete"],
+        "exclude": ["_n", "normal", "_spec", "spec", "detail", "_dirt", "mask"],
+        "require_any": ["road", "asphalt", "concrete", "slab"],
+    },
+    "roadDetail": {
+        "include": {"road": 38, "detail": 32, "rock": 20, "tato": 10, "dirt": 8, "rubble": 8},
+        "preferred": ["texture/rock_tato_road_a1", "texture/spaceport_concrete_dirt", "texture/tato_concrete_capitol_dirt"],
+        "exclude": ["_n", "normal", "_spec", "spec", "mask"],
+        "require_any": ["road", "detail", "dirt", "rubble"],
+    },
+    "pad": {
+        "include": {"spaceport": 52, "starport": 48, "landing": 44, "pad": 44, "concrete": 22, "tato": 8, "industrial": 6},
+        "preferred": ["texture/spaceport_concrete", "texture/spaceport_concrete_dirt", "texture/rock_tato_road"],
+        "exclude": ["_n", "normal", "_spec", "spec", "detail", "mask"],
+        "require_any": ["spaceport", "starport", "landing", "pad"],
+    },
 }
 
 
@@ -41,8 +172,8 @@ def candidate_roots(explicit: str | None) -> list[Path]:
     for letter in "DEFGHIJKLMNOPQRSTUVWXYZ":
         roots.append(Path(f"{letter}:\\SWG Restoration"))
 
-    seen = set()
-    found = []
+    seen: set[str] = set()
+    found: list[Path] = []
     for root in roots:
         key = str(root).lower()
         if key in seen:
@@ -69,7 +200,7 @@ def _looks_like_zlib(data: bytes) -> bool:
 
 def decode_toc(raw: bytes, compressor: int, record_count: int):
     """Mirror SWG's SearchTree/Nuna TOC recovery behavior."""
-    attempts = []
+    attempts: list[bytes] = []
     if compressor != 0:
         try:
             attempts.append(_zlib_decompress(raw))
@@ -93,8 +224,6 @@ def decode_toc(raw: bytes, compressor: int, record_count: int):
             if stride >= 24:
                 return blob, stride
 
-        # Community v0006 archives can include trailing slack. Trim to a
-        # uniform row layout, but never below the 24-byte SearchTree entry.
         trimmed = len(blob) - (len(blob) % record_count)
         if trimmed >= record_count * 24:
             stride = trimmed // record_count
@@ -152,7 +281,6 @@ def read_tre_index(tre_path: Path):
         if not record_count or record_count > 2_000_000 or not toc_size or not name_uncompressed:
             return None
 
-        # SearchTree reads exactly header.sizeOfTOC bytes from tocOffset.
         f.seek(toc_offset)
         toc_on_disk = f.read(toc_size)
         if len(toc_on_disk) != toc_size:
@@ -163,8 +291,6 @@ def read_tre_index(tre_path: Path):
             return None
         toc_blob, stride = decoded_toc
 
-        # Name block begins after the STORED TOC bytes, regardless of whether
-        # the TOC expands to a larger uncompressed buffer.
         name_block_offset = toc_offset + toc_size
         f.seek(name_block_offset)
         name_read_size = name_size if name_comp != 0 else name_uncompressed
@@ -176,7 +302,7 @@ def read_tre_index(tre_path: Path):
         if names is None:
             return None
 
-        entries = {}
+        entries: dict[str, dict[str, Any]] = {}
         valid_rows = 0
         for i in range(record_count):
             off = i * stride
@@ -195,9 +321,6 @@ def read_tre_index(tre_path: Path):
 
             virtual_path = names[name_offset:end].decode("utf-8", errors="ignore")
             virtual_path = virtual_path.replace("\\", "/").strip("/").lower()
-
-            # Reject obviously corrupt name offsets instead of letting garbage
-            # strings collapse thousands of rows into a misleading dictionary.
             if not virtual_path or len(virtual_path) > 512:
                 continue
             if any(ord(ch) < 32 for ch in virtual_path):
@@ -208,6 +331,7 @@ def read_tre_index(tre_path: Path):
                 "file_offset": file_offset,
                 "compression": compression,
                 "compressed_size": compressed_size,
+                "archive": tre_path,
             }
             valid_rows += 1
 
@@ -224,40 +348,328 @@ def read_tre_index(tre_path: Path):
             "name_compressor": name_comp,
         }
 
-def copy_loose(root: Path, virtual_path: str, destination: Path) -> bool:
+
+def inventory_from_archives(tre_files: Iterable[Path]) -> tuple[list[AssetEntry], dict[str, Any]]:
+    tre_files = list(tre_files)
+    inventory: list[AssetEntry] = []
+    versions: dict[str, int] = {}
+    strides: dict[int, int] = {}
+    compressors: dict[str, int] = {}
+    errors: list[dict[str, str]] = []
+    parsed_archives = 0
+    parsed_rows = 0
+    valid_rows = 0
+
+    for archive_rank, tre_path in enumerate(tre_files):
+        try:
+            archive = read_tre_index(tre_path)
+        except Exception as exc:  # pragma: no cover - protects a full client scan
+            archive = None
+            errors.append({"archive": tre_path.name, "error": str(exc)})
+
+        if not archive:
+            continue
+
+        parsed_archives += 1
+        parsed_rows += int(archive.get("record_count", 0))
+        valid_rows += int(archive.get("valid_rows", 0))
+        versions[archive["version"]] = versions.get(archive["version"], 0) + 1
+        strides[archive["stride"]] = strides.get(archive["stride"], 0) + 1
+        comp_key = f"toc{archive.get('toc_compressor', '?')}/name{archive.get('name_compressor', '?')}"
+        compressors[comp_key] = compressors.get(comp_key, 0) + 1
+
+        for virtual_path, metadata in archive["entries"].items():
+            inventory.append(AssetEntry(virtual_path, tre_path, {**metadata, "archive_rank": archive_rank}))
+
+    stats = {
+        "archiveCount": len(tre_files),
+        "parsedArchives": parsed_archives,
+        "parsedRows": parsed_rows,
+        "validRows": valid_rows,
+        "uniquePaths": len({entry.virtual_path for entry in inventory}),
+        "versions": versions,
+        "strides": strides,
+        "compression": compressors,
+        "errors": errors,
+    }
+    return inventory, stats
+
+
+def search_entries(entries: Iterable[AssetEntry], terms: Iterable[str], extension: str | None = None) -> list[AssetEntry]:
+    normalized_terms = [term.lower().replace("\\", "/") for term in terms if term]
+    normalized_extension = extension.lower() if extension else None
+    if normalized_extension and not normalized_extension.startswith("."):
+        normalized_extension = f".{normalized_extension}"
+
+    aliases = {
+        "tato": ("tato", "tatt"),
+        "tatooine": ("tatooine", "tato", "tatt"),
+        "mos": ("mos", "mse"),
+        "eisley": ("eisley", "mse"),
+        "industrial": ("industrial", "impl", "ins"),
+    }
+
+    def matches(path: str, term: str) -> bool:
+        return any(alias in path for alias in aliases.get(term, (term,)))
+
+    result = [
+        entry
+        for entry in entries
+        if all(matches(entry.virtual_path.lower(), term) for term in normalized_terms)
+        and (normalized_extension is None or entry.extension == normalized_extension)
+    ]
+    return sorted(result, key=lambda entry: (entry.virtual_path, -entry.archive_rank, str(entry.archive).lower()))
+
+
+def _role_score(entry: AssetEntry, role: str) -> int | None:
+    rule = ROLE_RULES[role]
+    path = entry.virtual_path.lower()
+    if entry.extension != ".dds":
+        return None
+    if any(fragment in path for fragment in rule.get("exclude", [])):
+        return None
+    required = rule.get("require_any", [])
+    if required and not any(fragment in path for fragment in required):
+        return None
+
+    score = sum(weight for fragment, weight in rule.get("include", {}).items() if fragment in path)
+    if score <= 0:
+        return None
+    for index, fragment in enumerate(rule.get("preferred", [])):
+        if fragment in path:
+            score += 500 - index * 25
+            break
+    if path.startswith("texture/"):
+        score += 5
+    return score
+
+
+def select_asset(entries: Iterable[AssetEntry], role: str) -> AssetEntry | None:
+    if role not in ROLE_RULES:
+        raise KeyError(f"Unknown asset role: {role}")
+
+    ranked = [(score, entry) for entry in entries if (score := _role_score(entry, role)) is not None]
+    if not ranked:
+        return None
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
+    return ranked[0][1]
+
+
+def ranked_assets(entries: Iterable[AssetEntry], role: str, limit: int = 10) -> list[tuple[int, AssetEntry]]:
+    ranked = [(score, entry) for entry in entries if (score := _role_score(entry, role)) is not None]
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
+    return ranked[:limit]
+
+
+def static_asset_candidates(entries: Iterable[AssetEntry], extension: str | None = None) -> list[AssetEntry]:
+    normalized_extension = extension.lower() if extension else None
+    if normalized_extension and not normalized_extension.startswith("."):
+        normalized_extension = f".{normalized_extension}"
+
+    candidates = [
+        entry
+        for entry in entries
+        if entry.extension in STATIC_ASSET_EXTENSIONS
+        and (normalized_extension is None or entry.extension == normalized_extension)
+        and any(keyword in entry.virtual_path for keyword in MESH_KEYWORDS)
+    ]
+
+    def sort_key(entry: AssetEntry) -> tuple[int, str, int, str]:
+        priority = 0 if any(term in entry.virtual_path for term in ("moisture", "vapor", "starport", "jabba", "pipe", "cafe", "house")) else 1
+        return priority, entry.virtual_path, -entry.archive_rank, str(entry.archive).lower()
+
+    return sorted(candidates, key=sort_key)
+
+
+def _character_mesh_score(entry: AssetEntry, role: str) -> int | None:
+    rule = CHARACTER_MESH_RULES.get(role)
+    if rule is None or entry.extension != ".msh":
+        return None
+    path = entry.virtual_path.lower()
+    if any(fragment in path for fragment in rule["exclude"]):
+        return None
+    if not any(fragment in path for fragment in rule["require_any"]):
+        return None
+    score = sum(weight for fragment, weight in rule["include"].items() if fragment in path)
+    if not path.startswith("appearance/mesh/"):
+        score -= 15
+    return score if score > 0 else None
+
+
+def select_character_mesh(entries: Iterable[AssetEntry], role: str) -> AssetEntry | None:
+    ranked = [
+        (score, entry)
+        for entry in entries
+        if (score := _character_mesh_score(entry, role)) is not None
+    ]
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
+    return ranked[0][1] if ranked else None
+
+
+def ranked_character_meshes(entries: Iterable[AssetEntry], role: str, limit: int = 20) -> list[tuple[int, AssetEntry]]:
+    ranked = [
+        (score, entry)
+        for entry in entries
+        if (score := _character_mesh_score(entry, role)) is not None
+    ]
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
+    return ranked[:limit]
+
+
+def build_manifest_asset(entry: AssetEntry, url: str) -> dict[str, Any]:
+    return {
+        "url": url,
+        "archive": entry.archive.name,
+        "archivePath": str(entry.archive),
+        "archiveRank": entry.archive_rank,
+        "virtualPath": entry.virtual_path,
+        "kind": entry.extension.lstrip(".") or "binary",
+        "uncompressedSize": int(entry.metadata.get("uncompressed_size", 0)),
+        "compression": int(entry.metadata.get("compression", 0)),
+    }
+
+
+def copy_loose(root: Path, virtual_path: str, destination: Path) -> Path | None:
     candidate = root.joinpath(*virtual_path.split("/"))
     if candidate.is_file():
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(candidate.read_bytes())
-        return True
+        return candidate
 
-    # Restoration can place overrides in nested patch/mod folders.
-    wanted = Path(virtual_path).name.lower()
-    for loose in root.rglob("*"):
-        if loose.is_file() and loose.name.lower() == wanted:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(loose.read_bytes())
-            return True
-    return False
+    normalized = virtual_path.replace("\\", "/").strip("/").lower()
+    matches: list[Path] = []
+    for loose in sorted(root.rglob("*"), key=lambda path: str(path).lower()):
+        if not loose.is_file():
+            continue
+        try:
+            relative = loose.relative_to(root).as_posix().lower()
+        except ValueError:
+            continue
+        if relative == normalized or relative.endswith(f"/{normalized}"):
+            matches.append(loose)
+    if not matches:
+        return None
+
+    # Nested patch folders are allowed, but basename-only matches are not. If
+    # several exact virtual-path overrides exist, lexical order gives a stable
+    # local choice and the manifest records the chosen source path.
+    source = matches[-1]
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(source.read_bytes())
+    return source
 
 
-def extract_from_tre(tre_path: Path, entry: dict, destination: Path) -> bool:
+def is_valid_dds_payload(data: bytes) -> bool:
+    if len(data) < 128 or data[:4] != b"DDS ":
+        return False
+    header_size, height, width = struct.unpack_from("<III", data, 4)
+    return header_size == 124 and width > 0 and height > 0
+
+
+def is_valid_dds_file(path: Path) -> bool:
     try:
-        with tre_path.open("rb") as f:
-            f.seek(entry["file_offset"])
-            stored_size = entry["compressed_size"] if entry["compression"] else entry["uncompressed_size"]
-            packed = f.read(stored_size)
-        data = _zlib_decompress(packed) if entry["compression"] else packed
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(data)
-        return True
-    except Exception:
+        with path.open("rb") as stream:
+            return is_valid_dds_payload(stream.read(128))
+    except OSError:
         return False
 
 
+def _known_plain_magic(data: bytes) -> bool:
+    return data.startswith((b"DDS ", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
+
+
+def decode_tre_entry(tre_path: Path, entry: dict[str, Any]) -> bytes:
+    """Read one Restoration payload, decrypting its padded Twofish stream."""
+    compressed = bool(entry.get("compression"))
+    expected_size = int(entry.get("uncompressed_size", 0))
+    stored_size = int(entry.get("compressed_size" if compressed else "uncompressed_size", 0))
+    if stored_size <= 0:
+        raise ValueError("TRE entry has no payload size")
+
+    padded_size = (stored_size + 15) & ~15
+    with tre_path.open("rb") as f:
+        f.seek(int(entry["file_offset"]))
+        packed = f.read(padded_size)
+    if len(packed) < stored_size:
+        raise ValueError(f"short payload: expected {stored_size}, got {len(packed)}")
+
+    # Loose files and older public TREs can be plain. Prefer this cheap path,
+    # then use the encrypted Restoration path when the bytes are not a stream.
+    if compressed:
+        try:
+            decoded = _zlib_decompress(packed[:stored_size])
+            if not expected_size or len(decoded) >= expected_size:
+                return decoded[:expected_size] if expected_size else decoded
+        except Exception:
+            pass
+    elif _known_plain_magic(packed[:16]):
+        return packed[:expected_size] if expected_size else packed[:stored_size]
+
+    decryptable_size = len(packed) - (len(packed) % 16)
+    if decryptable_size < 16:
+        raise ValueError("encrypted payload is shorter than one Twofish block")
+    decrypted = decrypt_twofish_ecb(packed[:decryptable_size], RESTORATION_TWOFISH_KEY)
+
+    if compressed:
+        decoded = _zlib_decompress(decrypted)
+    else:
+        decoded = decrypted
+
+    if expected_size and len(decoded) < expected_size:
+        raise ValueError(f"decoded payload is short: expected {expected_size}, got {len(decoded)}")
+    return decoded[:expected_size] if expected_size else decoded
+
+
+def extract_from_tre(tre_path: Path, entry: dict[str, Any], destination: Path) -> tuple[bool, str | None]:
+    try:
+        data = decode_tre_entry(tre_path, entry)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _print_search_results(entries: list[AssetEntry], terms: list[str], extension: str | None, limit: int) -> None:
+    matches = search_entries(entries, terms, extension)
+    print(f"Search {' '.join(terms)!r}: {len(matches):,} matching inventory rows")
+    shown: set[tuple[str, str]] = set()
+    for entry in matches:
+        identity = (str(entry.archive).lower(), entry.virtual_path)
+        if identity in shown:
+            continue
+        shown.add(identity)
+        print(
+            f"  {entry.archive.name} :: {entry.virtual_path} "
+            f"[{entry.extension or 'no extension'}, {entry.metadata.get('uncompressed_size', 0):,} bytes, "
+            f"compression={entry.metadata.get('compression', 0)}]"
+        )
+        if len(shown) >= limit:
+            break
+
+
+def _mesh_report(entries: list[AssetEntry], limit: int, extension: str | None = None) -> None:
+    print("SWG static-environment candidates (catalog only; no copyrighted files are written):")
+    candidates = static_asset_candidates(entries, extension)
+    for entry in candidates[:limit]:
+        print(f"  {entry.archive.name} :: {entry.virtual_path}")
+    print(f"  ... {len(candidates):,} matching static-environment candidates in the parsed inventory")
+
+
+def _write_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, indent=2, default=str) + "\n", encoding="utf-8")
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Import a curated SWG texture set from a local client install.")
+    parser = argparse.ArgumentParser(
+        description="Discover, decrypt, and import a curated SWG Restoration asset set from a local client install."
+    )
     parser.add_argument("--source", "-s", help="Path to your SWG Restoration client folder.")
+    parser.add_argument("--search", nargs="+", help="List virtual paths containing every supplied keyword.")
+    parser.add_argument("--extension", help="Restrict --search/--mesh-report output, for example .dds or .msh.")
+    parser.add_argument("--limit", type=int, default=40, help="Maximum search/report rows to print (default: 40).")
+    parser.add_argument("--mesh-report", action="store_true", help="List reusable static-environment candidates and exit.")
     args = parser.parse_args()
 
     roots = candidate_roots(args.source)
@@ -268,134 +680,361 @@ def main() -> int:
 
     source = roots[0]
     print(f"Using SWG client: {source}")
+    tre_files = sorted(
+        [path for path in source.rglob("*") if path.is_file() and path.suffix.lower() == ".tre"],
+        key=lambda path: str(path).lower(),
+    )
+    print(f"Scanning {len(tre_files)} TRE archives for the local SWG path inventory...")
+    inventory, stats = inventory_from_archives(tre_files)
+    print(
+        f"Parsed {stats['parsedArchives']}/{stats['archiveCount']} TRE archives "
+        f"({stats['parsedRows']:,} TOC rows; {stats['validRows']:,} valid paths; "
+        f"{stats['uniquePaths']:,} unique paths; versions {stats['versions'] or 'none'}; "
+        f"strides {stats['strides'] or 'none'}; compression {stats['compression'] or 'none'})."
+    )
+    if stats["errors"]:
+        for error in stats["errors"][:8]:
+            print(f"  parse warning: {error['archive']}: {error['error']}")
+
+    if args.search:
+        _print_search_results(inventory, args.search, args.extension, max(1, args.limit))
+        return 0
+    if args.mesh_report:
+        _mesh_report(inventory, max(1, args.limit), args.extension)
+        return 0
 
     project_root = Path(__file__).resolve().parents[1]
     output_root = project_root / "assets" / "local-swg"
     texture_root = output_root / "texture"
     texture_root.mkdir(parents=True, exist_ok=True)
 
-    pending = dict(TARGETS)
-    found: dict[str, str] = {}
+    manifest_assets: dict[str, dict[str, Any]] = {}
+    selections: dict[str, dict[str, Any]] = {}
+    failures: dict[str, str] = {}
+    imported = 0
 
-    for role, virtual_path in list(pending.items()):
-        destination = texture_root / Path(virtual_path).name
-        if copy_loose(source, virtual_path, destination):
-            found[role] = f"./assets/local-swg/texture/{destination.name}"
-            pending.pop(role)
-            print(f"loose  {virtual_path}")
-
-    tre_files = sorted(
-        [p for p in source.rglob("*") if p.is_file() and p.suffix.lower() == ".tre"],
-        key=lambda p: str(p).lower(),
-    )
-    print(f"Scanning {len(tre_files)} TRE archives for {len(pending)} texture(s)...")
-
-    parsed_archives = 0
-    parsed_entries = 0
-    parsed_valid_rows = 0
-    versions: dict[str, int] = {}
-    strides: dict[int, int] = {}
-    compressors: dict[str, int] = {}
-    sample_paths: list[str] = []
-
-    # Search all archives. Later files are allowed to replace earlier matches,
-    # which approximates the client's patch/override behavior.
-    matches: dict[str, tuple[Path, dict, str]] = {}
-
-    for tre_path in tre_files:
-        try:
-            archive = read_tre_index(tre_path)
-        except Exception as exc:
-            archive = None
-
-        if not archive:
+    for role in ROLE_RULES:
+        candidates = ranked_assets(inventory, role, limit=20)
+        if not candidates:
+            failures[role] = "no ranked DDS candidate"
+            print(f"MISS   {role}: no matching DDS candidate")
             continue
 
-        parsed_archives += 1
-        entries = archive["entries"]
-        parsed_entries += archive.get("record_count", len(entries))
-        parsed_valid_rows += archive.get("valid_rows", len(entries))
-        versions[archive["version"]] = versions.get(archive["version"], 0) + 1
-        strides[archive.get("stride", 24)] = strides.get(archive.get("stride", 24), 0) + 1
-        comp_key = f'toc{archive.get("toc_compressor", "?")}/name{archive.get("name_compressor", "?")}'
-        compressors[comp_key] = compressors.get(comp_key, 0) + 1
+        imported_role = False
+        for score, entry in candidates:
+            destination_name = f"{role}_{Path(entry.virtual_path).stem}.dds"
+            destination = texture_root / destination_name
+            source_kind = "loose"
+            error: str | None = None
+            loose_path: Path | None = None
 
-        if len(sample_paths) < 8:
-            texture_samples=[p for p in entries if p.startswith("texture/")]
-            if texture_samples:
-                sample_paths.extend(texture_samples[: 8 - len(sample_paths)])
-            elif not sample_paths:
-                sample_paths.extend(list(entries)[:8])
+            loose_path = copy_loose(source, entry.virtual_path, destination)
+            if loose_path is None:
+                source_kind = "TRE"
+                ok, error = extract_from_tre(entry.archive, entry.metadata, destination)
+                if not ok:
+                    try:
+                        destination.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    continue
+            else:
+                ok = True
 
-        by_basename: dict[str, list[str]] = {}
-        for archive_path in entries:
-            by_basename.setdefault(Path(archive_path).name.lower(), []).append(archive_path)
+            if ok and not is_valid_dds_file(destination):
+                error = "decoded candidate did not have a valid DDS header"
+                try:
+                    destination.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                continue
 
-        for role, virtual_path in pending.items():
-            exact = virtual_path.lower()
-            matched_path = exact if exact in entries else None
+            if not ok:
+                continue
 
-            # Restoration/patch archives occasionally move an asset while
-            # retaining its original basename. Use basename matching as a
-            # conservative fallback.
-            if matched_path is None:
-                candidates = by_basename.get(Path(exact).name.lower(), [])
-                if len(candidates) == 1:
-                    matched_path = candidates[0]
+            url = f"./assets/local-swg/texture/{destination.name}"
+            manifest_assets[role] = build_manifest_asset(entry, url)
+            manifest_assets[role]["sourceKind"] = source_kind
+            if loose_path is not None:
+                manifest_assets[role]["sourcePath"] = str(loose_path.relative_to(source).as_posix())
+            selections[role] = {
+                "score": score,
+                "archive": entry.archive.name,
+                "archivePath": str(entry.archive),
+                "archiveRank": entry.archive_rank,
+                "virtualPath": entry.virtual_path,
+                "url": url,
+            }
+            imported += 1
+            print(f"SELECT {role:<14} score={score:<4} {entry.archive.name} :: {entry.virtual_path} [{source_kind}]")
+            imported_role = True
+            break
 
-            if matched_path is not None:
-                matches[role] = (tre_path, entries[matched_path], matched_path)
+        if not imported_role:
+            failures[role] = error or "all ranked candidates failed to decode"
+            print(f"MISS   {role}: {failures[role]}")
 
-    print(
-        f"Parsed {parsed_archives}/{len(tre_files)} TRE archives "
-        f"({parsed_entries:,} TOC rows; {parsed_valid_rows:,} valid paths; "
-        f"versions {versions or 'none'}; strides {strides or 'none'}; "
-        f"compression {compressors or 'none'})."
-    )
+    mesh_candidates_all = [
+        {
+            "archive": entry.archive.name,
+            "archivePath": str(entry.archive),
+            "archiveRank": entry.archive_rank,
+            "virtualPath": entry.virtual_path,
+            "extension": entry.extension,
+            "uncompressedSize": int(entry.metadata.get("uncompressed_size", 0)),
+        }
+        for entry in static_asset_candidates(inventory)
+    ]
+    mesh_candidates = mesh_candidates_all[:500]
 
-    if parsed_archives == 0:
-        print("No TRE archive could be parsed. First 4 bytes/version diagnostics:")
-        for tre_path in tre_files[:8]:
-            try:
-                with tre_path.open("rb") as f:
-                    head = f.read(8)
-                print(f"  {tre_path.name}: {head!r} / {head.hex(' ')}")
-            except Exception as exc:
-                print(f"  {tre_path.name}: {exc}")
-    if sample_paths:
-        print("Example internal paths found in the client:")
-        for p in sample_paths:
-            print(f"  {p}")
+    character_candidates_all = [
+        {
+            "role": role,
+            "score": score,
+            "archive": entry.archive.name,
+            "archivePath": str(entry.archive),
+            "archiveRank": entry.archive_rank,
+            "virtualPath": entry.virtual_path,
+            "extension": entry.extension,
+            "uncompressedSize": int(entry.metadata.get("uncompressed_size", 0)),
+        }
+        for role in CHARACTER_MESH_RULES
+        for score, entry in ranked_character_meshes(inventory, role, limit=100)
+    ]
 
-    for role, virtual_path in list(pending.items()):
-        match = matches.get(role)
-        if not match:
-            continue
+    mesh_proof: dict[str, Any] | None = None
+    try:
+        from convert_swg_mesh import convert_from_inventory
 
-        tre_path, entry, matched_path = match
-        destination = texture_root / Path(virtual_path).name
-        if extract_from_tre(tre_path, entry, destination):
-            found[role] = f"./assets/local-swg/texture/{destination.name}"
-            pending.pop(role)
-            suffix = "" if matched_path == virtual_path.lower() else f" ({matched_path})"
-            print(f"TRE    {virtual_path}{suffix} <- {tre_path.name}")
+        mesh_root = output_root / "mesh"
+        mesh_gltf = mesh_root / "ins_all_min_moisture_s01_u0_l0.gltf"
+        mesh_bin = mesh_gltf.with_suffix(".bin")
+        mesh_entry, mesh_summary = convert_from_inventory(inventory, mesh_gltf, mesh_bin)
+        mesh_proof = {
+            "url": f"./assets/local-swg/mesh/{mesh_gltf.name}",
+            "archive": mesh_entry.archive.name,
+            "archivePath": str(mesh_entry.archive),
+            "archiveRank": mesh_entry.archive_rank,
+            "virtualPath": mesh_entry.virtual_path,
+            "bin": f"./assets/local-swg/mesh/{mesh_bin.name}",
+            **mesh_summary,
+        }
+        print(
+            f"MESH   proof {mesh_entry.archive.name} :: {mesh_entry.virtual_path} "
+            f"({mesh_summary['submeshes']} submeshes, {mesh_summary['vertices']:,} vertices)"
+        )
+    except Exception as exc:
+        print(f"MESH   proof unavailable: {exc}")
+
+    characters: dict[str, dict[str, Any]] = {}
+    character_failures: dict[str, str] = {}
+    try:
+        from convert_swg_character import (
+            choose_character_skeletal_mesh,
+            convert_from_inventory as convert_rigged_from_inventory,
+            parse_skeletal_mesh,
+        )
+        from convert_swg_mesh import (
+            convert_from_inventory as convert_static_from_inventory,
+            extract_shader_texture_paths,
+            find_display_base_submeshes,
+            parse_static_mesh,
+        )
+
+        path_index: dict[str, AssetEntry] = {}
+        for entry in inventory:
+            key = entry.virtual_path.lower()
+            previous = path_index.get(key)
+            if previous is None or entry.archive_rank > previous.archive_rank:
+                path_index[key] = entry
+
+        for role in CHARACTER_MESH_RULES:
+            static_entry = select_character_mesh(inventory, role)
+            skeletal_entry = choose_character_skeletal_mesh(inventory) if role == "stormtrooper" else None
+            if static_entry is None and skeletal_entry is None:
+                character_failures[role] = "no ranked character mesh candidate"
+                print(f"CHARACTER miss {role}: no ranked mesh candidate")
+                continue
+
+            character_root = output_root / "character" / role
+            character_entry: AssetEntry
+            character_gltf: Path
+            character_bin: Path
+            source_submeshes: list[Any]
+            hidden_submeshes: list[int] = []
+            ground_offset = 0.0
+            rigged = False
+            converted_entry: AssetEntry
+            character_summary: dict[str, Any]
+
+            if skeletal_entry is not None:
+                try:
+                    character_gltf = character_root / f"{role}-rigged.gltf"
+                    character_bin = character_gltf.with_suffix(".bin")
+                    converted_entry, character_summary = convert_rigged_from_inventory(
+                        inventory,
+                        character_gltf,
+                        character_bin,
+                        preferred_virtual_path=skeletal_entry.virtual_path,
+                    )
+                    character_entry = converted_entry
+                    rigged_mesh = parse_skeletal_mesh(decode_tre_entry(character_entry.archive, character_entry.metadata))
+                    source_submeshes = list(rigged_mesh.submeshes)
+                    ground_offset = min(
+                        (position[1] for submesh in source_submeshes for position in submesh.positions),
+                        default=0.0,
+                    )
+                    rigged = True
+                    print(
+                        f"CHARACTER rigged {role:<10} {converted_entry.archive.name} :: "
+                        f"{converted_entry.virtual_path} ({character_summary['bones']} bones, "
+                        f"{character_summary['animations']} animation clips)"
+                    )
+                    print(
+                        f"CHARACTER skeleton {character_summary['skeletonArchive']} :: "
+                        f"{character_summary['skeleton']}"
+                    )
+                except Exception as exc:
+                    print(f"CHARACTER rigged {role:<10} unavailable: {exc}; trying static fallback")
+
+            if not rigged:
+                if static_entry is None:
+                    character_failures[role] = "rigged candidate failed and no static fallback exists"
+                    print(f"CHARACTER miss {role}: rigged candidate failed and no static fallback exists")
+                    continue
+                character_entry = static_entry
+                character_gltf = character_root / f"{role}.gltf"
+                character_bin = character_gltf.with_suffix(".bin")
+                mesh_payload = decode_tre_entry(character_entry.archive, character_entry.metadata)
+                source_submeshes = parse_static_mesh(mesh_payload)
+                hidden_submeshes = (
+                    find_display_base_submeshes(source_submeshes)
+                    if "statue" in character_entry.virtual_path.lower()
+                    else []
+                )
+                rendered_submeshes = [
+                    submesh
+                    for index, submesh in enumerate(source_submeshes)
+                    if index not in hidden_submeshes
+                ]
+                ground_offset = min(
+                    (position[1] for submesh in rendered_submeshes for position in submesh.positions),
+                    default=0.0,
+                )
+                if hidden_submeshes:
+                    print(f"CHARACTER strip {role:<11} display-base submeshes {hidden_submeshes}")
+                converted_entry, character_summary = convert_static_from_inventory(
+                    inventory,
+                    character_gltf,
+                    character_bin,
+                    preferred_virtual_path=character_entry.virtual_path,
+                    exclude_submesh_indices=hidden_submeshes,
+                )
+            shader_bindings: dict[str, list[str]] = {}
+            shader_texture_paths: set[str] = set()
+            for submesh in source_submeshes:
+                shader_entry = path_index.get(submesh.shader.lower())
+                if shader_entry is None:
+                    shader_bindings[submesh.shader] = []
+                    continue
+                shader_paths = extract_shader_texture_paths(
+                    decode_tre_entry(shader_entry.archive, shader_entry.metadata)
+                )
+                shader_bindings[submesh.shader] = shader_paths
+                shader_texture_paths.update(shader_paths)
+
+            character_texture_root = character_root / "texture"
+            character_textures: dict[str, dict[str, Any]] = {}
+            failed_texture_paths: dict[str, str] = {}
+            for shader_texture_path in sorted(shader_texture_paths):
+                texture_entry = path_index.get(shader_texture_path.lower())
+                if texture_entry is None:
+                    failed_texture_paths[shader_texture_path] = "shader DDS path not present in inventory"
+                    continue
+                destination = character_texture_root / f"{role}_{Path(shader_texture_path).name}"
+                loose_path = copy_loose(source, texture_entry.virtual_path, destination)
+                source_kind = "loose"
+                if loose_path is None:
+                    source_kind = "TRE"
+                    ok, error = extract_from_tre(texture_entry.archive, texture_entry.metadata, destination)
+                    if not ok:
+                        failed_texture_paths[shader_texture_path] = error or "TRE extraction failed"
+                        destination.unlink(missing_ok=True)
+                        continue
+                if not is_valid_dds_file(destination):
+                    failed_texture_paths[shader_texture_path] = "decoded shader reference did not have a valid DDS header"
+                    destination.unlink(missing_ok=True)
+                    continue
+                url = f"./assets/local-swg/character/{role}/texture/{destination.name}"
+                descriptor = build_manifest_asset(texture_entry, url)
+                descriptor["sourceKind"] = source_kind
+                if loose_path is not None:
+                    descriptor["sourcePath"] = str(loose_path.relative_to(source).as_posix())
+                character_textures[shader_texture_path] = descriptor
+                print(
+                    f"CHARACTER texture {role:<11} {texture_entry.archive.name} :: "
+                    f"{texture_entry.virtual_path} [{source_kind}]"
+                )
+
+            characters[role] = {
+                "url": f"./assets/local-swg/character/{role}/{character_gltf.name}",
+                "bin": f"./assets/local-swg/character/{role}/{character_bin.name}",
+                "archive": converted_entry.archive.name,
+                "archivePath": str(converted_entry.archive),
+                "archiveRank": converted_entry.archive_rank,
+                "virtualPath": converted_entry.virtual_path,
+                "shaderBindings": shader_bindings,
+                "textures": character_textures,
+                "failedTextures": failed_texture_paths,
+                "sourceSubmeshes": len(source_submeshes),
+                "hiddenSubmeshes": hidden_submeshes,
+                "groundOffset": ground_offset,
+                "rigged": rigged,
+                **character_summary,
+            }
+            print(
+                f"CHARACTER {role:<11} {converted_entry.archive.name} :: {converted_entry.virtual_path} "
+                f"({character_summary['submeshes']} submeshes, {character_summary['vertices']:,} vertices, "
+                f"{len(character_textures)} shader DDS textures)"
+            )
+    except Exception as exc:
+        character_failures["stormtrooper"] = str(exc)
+        print(f"CHARACTER stormtrooper unavailable: {exc}")
 
     manifest = {
-        "source": "local SWG client",
-        "generatedAt": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-        "assets": found,
+        "schemaVersion": 2,
+        "source": "local SWG Restoration client",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "decoder": {"tre": "Twofish-128 ECB + zlib", "key": "embedded Restoration client key"},
+        "inventory": stats,
+        "assets": manifest_assets,
+        "selections": selections,
+        "failedRoles": failures,
+        "meshCandidates": mesh_candidates,
+        "meshProof": mesh_proof,
+        "characterCandidates": character_candidates_all[:500],
+        "characters": characters,
+        "characterFailures": character_failures,
     }
-    (output_root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    _write_json(output_root / "manifest.json", manifest)
+    _write_json(
+        output_root / "asset-catalog.json",
+        {
+            "inventory": stats,
+            "meshCandidates": mesh_candidates_all,
+            "characterCandidates": character_candidates_all,
+        },
+    )
 
     print()
-    print(f"Imported {len(found)}/{len(TARGETS)} curated SWG textures.")
-    if pending:
-        print("Not found:")
-        for virtual_path in pending.values():
-            print(f"  {virtual_path}")
-
+    print(f"Imported {imported}/{len(ROLE_RULES)} curated SWG material roles.")
+    if failures:
+        print("Roles without a usable candidate:")
+        for role, reason in failures.items():
+            print(f"  {role}: {reason}")
     print(f"Manifest: {output_root / 'manifest.json'}")
-    return 0 if len(found) >= 3 else 1
+    print("Local binary output is ignored by Git; only code, schema, and documentation belong in the repository.")
+    return 0 if imported >= 3 else 1
 
 
 if __name__ == "__main__":
