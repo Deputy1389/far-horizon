@@ -54,6 +54,14 @@ MESH_KEYWORDS = (
     "industrial",
 )
 
+CHARACTER_MESH_RULES: dict[str, dict[str, Any]] = {
+    "stormtrooper": {
+        "include": {"stormtrooper": 120, "trooper": 36, "statue": 70, "frn": 24, "l0": 12},
+        "exclude": ("helmet", "toy", "weapon", "gun", "pile", "painting", "decor", "hook", "badge"),
+        "require_any": ("stormtrooper", "trooper"),
+    },
+}
+
 
 # Rules deliberately use semantic fragments instead of a list of guessed full
 # filenames. The importer ranks the complete local path inventory, so a client
@@ -473,6 +481,41 @@ def static_asset_candidates(entries: Iterable[AssetEntry], extension: str | None
     return sorted(candidates, key=sort_key)
 
 
+def _character_mesh_score(entry: AssetEntry, role: str) -> int | None:
+    rule = CHARACTER_MESH_RULES.get(role)
+    if rule is None or entry.extension != ".msh":
+        return None
+    path = entry.virtual_path.lower()
+    if any(fragment in path for fragment in rule["exclude"]):
+        return None
+    if not any(fragment in path for fragment in rule["require_any"]):
+        return None
+    score = sum(weight for fragment, weight in rule["include"].items() if fragment in path)
+    if not path.startswith("appearance/mesh/"):
+        score -= 15
+    return score if score > 0 else None
+
+
+def select_character_mesh(entries: Iterable[AssetEntry], role: str) -> AssetEntry | None:
+    ranked = [
+        (score, entry)
+        for entry in entries
+        if (score := _character_mesh_score(entry, role)) is not None
+    ]
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
+    return ranked[0][1] if ranked else None
+
+
+def ranked_character_meshes(entries: Iterable[AssetEntry], role: str, limit: int = 20) -> list[tuple[int, AssetEntry]]:
+    ranked = [
+        (score, entry)
+        for entry in entries
+        if (score := _character_mesh_score(entry, role)) is not None
+    ]
+    ranked.sort(key=lambda item: (-item[0], item[1].virtual_path, -item[1].archive_rank, str(item[1].archive).lower()))
+    return ranked[:limit]
+
+
 def build_manifest_asset(entry: AssetEntry, url: str) -> dict[str, Any]:
     return {
         "url": url,
@@ -744,6 +787,21 @@ def main() -> int:
     ]
     mesh_candidates = mesh_candidates_all[:500]
 
+    character_candidates_all = [
+        {
+            "role": role,
+            "score": score,
+            "archive": entry.archive.name,
+            "archivePath": str(entry.archive),
+            "archiveRank": entry.archive_rank,
+            "virtualPath": entry.virtual_path,
+            "extension": entry.extension,
+            "uncompressedSize": int(entry.metadata.get("uncompressed_size", 0)),
+        }
+        for role in CHARACTER_MESH_RULES
+        for score, entry in ranked_character_meshes(inventory, role, limit=100)
+    ]
+
     mesh_proof: dict[str, Any] | None = None
     try:
         from convert_swg_mesh import convert_from_inventory
@@ -768,6 +826,128 @@ def main() -> int:
     except Exception as exc:
         print(f"MESH   proof unavailable: {exc}")
 
+    characters: dict[str, dict[str, Any]] = {}
+    character_failures: dict[str, str] = {}
+    try:
+        from convert_swg_mesh import (
+            convert_from_inventory,
+            extract_shader_texture_paths,
+            find_display_base_submeshes,
+            parse_static_mesh,
+        )
+
+        path_index: dict[str, AssetEntry] = {}
+        for entry in inventory:
+            key = entry.virtual_path.lower()
+            previous = path_index.get(key)
+            if previous is None or entry.archive_rank > previous.archive_rank:
+                path_index[key] = entry
+
+        for role in CHARACTER_MESH_RULES:
+            character_entry = select_character_mesh(inventory, role)
+            if character_entry is None:
+                character_failures[role] = "no ranked character mesh candidate"
+                print(f"CHARACTER miss {role}: no ranked mesh candidate")
+                continue
+
+            character_root = output_root / "character" / role
+            character_gltf = character_root / f"{role}.gltf"
+            character_bin = character_gltf.with_suffix(".bin")
+            mesh_payload = decode_tre_entry(character_entry.archive, character_entry.metadata)
+            source_submeshes = parse_static_mesh(mesh_payload)
+            hidden_submeshes = (
+                find_display_base_submeshes(source_submeshes)
+                if "statue" in character_entry.virtual_path.lower()
+                else []
+            )
+            rendered_submeshes = [
+                submesh
+                for index, submesh in enumerate(source_submeshes)
+                if index not in hidden_submeshes
+            ]
+            ground_offset = min(
+                (position[1] for submesh in rendered_submeshes for position in submesh.positions),
+                default=0.0,
+            )
+            if hidden_submeshes:
+                print(f"CHARACTER strip {role:<11} display-base submeshes {hidden_submeshes}")
+            converted_entry, character_summary = convert_from_inventory(
+                inventory,
+                character_gltf,
+                character_bin,
+                preferred_virtual_path=character_entry.virtual_path,
+                exclude_submesh_indices=hidden_submeshes,
+            )
+            shader_bindings: dict[str, list[str]] = {}
+            shader_texture_paths: set[str] = set()
+            for submesh in source_submeshes:
+                shader_entry = path_index.get(submesh.shader.lower())
+                if shader_entry is None:
+                    shader_bindings[submesh.shader] = []
+                    continue
+                shader_paths = extract_shader_texture_paths(
+                    decode_tre_entry(shader_entry.archive, shader_entry.metadata)
+                )
+                shader_bindings[submesh.shader] = shader_paths
+                shader_texture_paths.update(shader_paths)
+
+            character_texture_root = character_root / "texture"
+            character_textures: dict[str, dict[str, Any]] = {}
+            failed_texture_paths: dict[str, str] = {}
+            for shader_texture_path in sorted(shader_texture_paths):
+                texture_entry = path_index.get(shader_texture_path.lower())
+                if texture_entry is None:
+                    failed_texture_paths[shader_texture_path] = "shader DDS path not present in inventory"
+                    continue
+                destination = character_texture_root / f"{role}_{Path(shader_texture_path).name}"
+                loose_path = copy_loose(source, texture_entry.virtual_path, destination)
+                source_kind = "loose"
+                if loose_path is None:
+                    source_kind = "TRE"
+                    ok, error = extract_from_tre(texture_entry.archive, texture_entry.metadata, destination)
+                    if not ok:
+                        failed_texture_paths[shader_texture_path] = error or "TRE extraction failed"
+                        destination.unlink(missing_ok=True)
+                        continue
+                if not is_valid_dds_file(destination):
+                    failed_texture_paths[shader_texture_path] = "decoded shader reference did not have a valid DDS header"
+                    destination.unlink(missing_ok=True)
+                    continue
+                url = f"./assets/local-swg/character/{role}/texture/{destination.name}"
+                descriptor = build_manifest_asset(texture_entry, url)
+                descriptor["sourceKind"] = source_kind
+                if loose_path is not None:
+                    descriptor["sourcePath"] = str(loose_path.relative_to(source).as_posix())
+                character_textures[shader_texture_path] = descriptor
+                print(
+                    f"CHARACTER texture {role:<11} {texture_entry.archive.name} :: "
+                    f"{texture_entry.virtual_path} [{source_kind}]"
+                )
+
+            characters[role] = {
+                "url": f"./assets/local-swg/character/{role}/{character_gltf.name}",
+                "bin": f"./assets/local-swg/character/{role}/{character_bin.name}",
+                "archive": converted_entry.archive.name,
+                "archivePath": str(converted_entry.archive),
+                "archiveRank": converted_entry.archive_rank,
+                "virtualPath": converted_entry.virtual_path,
+                "shaderBindings": shader_bindings,
+                "textures": character_textures,
+                "failedTextures": failed_texture_paths,
+                "sourceSubmeshes": len(source_submeshes),
+                "hiddenSubmeshes": hidden_submeshes,
+                "groundOffset": ground_offset,
+                **character_summary,
+            }
+            print(
+                f"CHARACTER {role:<11} {converted_entry.archive.name} :: {converted_entry.virtual_path} "
+                f"({character_summary['submeshes']} submeshes, {character_summary['vertices']:,} vertices, "
+                f"{len(character_textures)} shader DDS textures)"
+            )
+    except Exception as exc:
+        character_failures["stormtrooper"] = str(exc)
+        print(f"CHARACTER stormtrooper unavailable: {exc}")
+
     manifest = {
         "schemaVersion": 2,
         "source": "local SWG Restoration client",
@@ -779,9 +959,19 @@ def main() -> int:
         "failedRoles": failures,
         "meshCandidates": mesh_candidates,
         "meshProof": mesh_proof,
+        "characterCandidates": character_candidates_all[:500],
+        "characters": characters,
+        "characterFailures": character_failures,
     }
     _write_json(output_root / "manifest.json", manifest)
-    _write_json(output_root / "asset-catalog.json", {"inventory": stats, "meshCandidates": mesh_candidates_all})
+    _write_json(
+        output_root / "asset-catalog.json",
+        {
+            "inventory": stats,
+            "meshCandidates": mesh_candidates_all,
+            "characterCandidates": character_candidates_all,
+        },
+    )
 
     print()
     print(f"Imported {imported}/{len(ROLE_RULES)} curated SWG material roles.")

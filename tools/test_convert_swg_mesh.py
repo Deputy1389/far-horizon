@@ -4,7 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from convert_swg_mesh import parse_static_mesh, write_gltf
+from convert_swg_mesh import (
+    MeshSubmesh,
+    extract_shader_texture_paths,
+    find_display_base_submeshes,
+    parse_static_mesh,
+    write_gltf,
+)
 from import_swg_assets import AssetEntry
 
 
@@ -18,6 +24,47 @@ def _form(form_type: bytes, *children: bytes) -> bytes:
 
 
 class StaticMeshConverterTests(unittest.TestCase):
+    def test_detects_wide_low_display_base_without_hiding_body_or_weapon(self) -> None:
+        body = MeshSubmesh(
+            "shader/body.sht",
+            [(-0.25, 0.2, -0.25), (0.25, 1.7, 0.25)],
+            [],
+            [],
+            [],
+        )
+        base = MeshSubmesh(
+            "shader/base.sht",
+            [(-0.38, 0.0, -0.38), (0.38, 0.42, 0.38)],
+            [],
+            [],
+            [],
+        )
+        weapon = MeshSubmesh(
+            "shader/weapon.sht",
+            [(-0.2, 1.2, -0.1), (0.2, 1.35, 0.1)],
+            [],
+            [],
+            [],
+        )
+
+        self.assertEqual(find_display_base_submeshes([body, base, weapon]), [1])
+
+    def test_extracts_dds_references_from_shader_payload(self) -> None:
+        payload = (
+            b"shader/frn_statue_stormtrooper.sht\x00"
+            b"texture/frn_statue_stormtrooper.dds\x00"
+            b"texture/frn_statue_stormtrooper_spec.dds\x00"
+            b"texture/frn_statue_stormtrooper.dds\x00"
+        )
+
+        self.assertEqual(
+            extract_shader_texture_paths(payload),
+            [
+                "texture/frn_statue_stormtrooper.dds",
+                "texture/frn_statue_stormtrooper_spec.dds",
+            ],
+        )
+
     def test_parses_documented_static_mesh_subset_and_writes_gltf(self) -> None:
         vertices = b"".join(
             struct.pack("<3f3f2f", *position, 0.0, 1.0, 0.0, *uv)

@@ -219,6 +219,10 @@ async function loadLocalSwgTextures(prep){
   const result={};
   const loadedRoles=[];
   const failedRoles=[];
+  const characterTextures={};
+  const characterManifest=manifest.characters?.stormtrooper||null;
+  const characterTextureEntries=Object.entries(characterManifest?.textures||{});
+  const characterFailedTextures=[];
   const entries=Object.entries(manifest.assets||{});
   await Promise.all(entries.map(([role,descriptor])=>new Promise(resolve=>{
     // Manifest v2 records provenance beside the URL. Keep accepting the old
@@ -232,12 +236,24 @@ async function loadLocalSwgTextures(prep){
       prep(tex);result[role]=tex;loadedRoles.push(role);resolve();
     },undefined,()=>{failedRoles.push(role);console.warn(`SWG DDS failed to decode: ${role}`);resolve();});
   })));
+  await Promise.all(characterTextureEntries.map(([virtualPath,descriptor])=>new Promise(resolve=>{
+    const url=descriptor?.url;
+    if(!url){characterFailedTextures.push(virtualPath);resolve();return;}
+    loader.load(url,tex=>{
+      tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+      tex.colorSpace=virtualPath.toLowerCase().includes('_cn')||virtualPath.toLowerCase().includes('normal')?THREE.NoColorSpace:THREE.SRGBColorSpace;
+      prep(tex);characterTextures[virtualPath.toLowerCase()]=tex;resolve();
+    },undefined,()=>{characterFailedTextures.push(virtualPath);console.warn(`SWG character DDS failed to decode: ${virtualPath}`);resolve();});
+  })));
   const status=summarizeSwgAssetLoad(manifest,loadedRoles);
   status.failedRoles=failedRoles.sort();
   window.__farHorizonSwgStatus=status;
   console.info(`${status.label}${failedRoles.length?` · failed: ${failedRoles.join(', ')}`:''}`);
-  if(!Object.keys(result).length)return null;
+  const characterStatus={total:characterTextureEntries.length,loaded:Object.keys(characterTextures).length,failed:characterFailedTextures.length,failedPaths:characterFailedTextures.sort()};
+  if(characterManifest)console.info(`SWG CHARACTER stormtrooper ${characterStatus.loaded}/${characterStatus.total}`);
+  if(!Object.keys(result).length&&!Object.keys(characterTextures).length)return null;
   Object.defineProperty(result,'__status',{value:status,enumerable:false});
+  Object.defineProperty(result,'__character',{value:{manifest:characterManifest,textures:characterTextures,status:characterStatus},enumerable:false});
   return result;
 }
 
@@ -275,6 +291,35 @@ export async function createMaterialLibrary(renderer){
     const t=tex.clone();t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(repeat,repeat);prep(t);return t;
   }
 
+  function stormtrooperMap(shaderName){
+    const character=local?.__character;
+    if(!character?.manifest)return null;
+    const normalized=String(shaderName||'').toLowerCase();
+    const bindings=Object.entries(character.manifest.shaderBindings||{});
+    const matched=binding=>binding[0].toLowerCase()===normalized||normalized.includes(binding[0].toLowerCase());
+    const paths=(bindings.find(matched)?.[1]||[]).map(path=>String(path).toLowerCase());
+    const colorPath=paths.find(path=>!path.includes('_spec')&&!path.includes('_cn')&&!path.includes('normal'))||paths[0];
+    const normalPath=paths.find(path=>path.includes('_cn')||path.includes('normal'));
+    return {
+      map:colorPath?character.textures[colorPath]||null:null,
+      normalMap:normalPath?character.textures[normalPath]||null:null,
+    };
+  }
+
+  function stormtrooperMaterial(shaderName){
+    const maps=stormtrooperMap(shaderName);
+    const weapon=String(shaderName||'').toLowerCase().includes('weapon');
+    const material=new THREE.MeshStandardMaterial({
+      map:maps?.map||metalMap,
+      color:maps?.map?0xffffff:0xd7d7d2,
+      normalMap:maps?.normalMap||null,
+      metalness:weapon ? .58 : .12,
+      roughness:weapon ? .42 : .72,
+    });
+    if(maps?.normalMap)material.normalScale.set(.55,.55);
+    return material;
+  }
+
   function building(hex){
     const key=Number(hex);
     if(facadeCache.has(key))return facadeCache.get(key);
@@ -304,6 +349,9 @@ export async function createMaterialLibrary(renderer){
     usesSwgAssets:!!local,
     swgAssetCount:local?Object.keys(local).length:0,
     swgAssetStatus:local?.__status||window.__farHorizonSwgStatus||summarizeSwgAssetLoad(null,[]),
+    stormtrooperReady:!!(local?.__character?.manifest&&local.__character.status.loaded>0),
+    stormtrooperTextureStatus:local?.__character?.status||{total:0,loaded:0,failed:0,failedPaths:[]},
+    stormtrooperMaterial,
     terrain:new THREE.MeshStandardMaterial({
       map:terrainMap,
       color:swgMaterialColor(!!local?.sand,0xffffff),

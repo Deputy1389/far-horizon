@@ -17,6 +17,7 @@ const ui = {
   scan: document.getElementById('scanLabel'),
   drones: document.getElementById('droneLabel'),
   swgAssets: document.getElementById('swgAssetLabel'),
+  character: document.getElementById('characterLabel'),
   toast: document.getElementById('toast'),
   prompt: document.getElementById('interactionPrompt'),
   startCard: document.getElementById('startCard'),
@@ -41,6 +42,7 @@ document.getElementById('game').appendChild(renderer.domElement);
 
 const materials = await createMaterialLibrary(renderer);
 ui.swgAssets.textContent = materials.swgAssetStatus.label;
+ui.character.textContent = materials.stormtrooperReady ? 'STORMTROOPER' : 'CAPSULE FALLBACK';
 
 scene.add(new THREE.HemisphereLight(0xffd7aa, 0x554738, 2.1));
 const sun = new THREE.DirectionalLight(0xffd2a0, 3.6);
@@ -202,6 +204,54 @@ async function addLocalSwgMesh(){
   }
 }
 
+let localStormtrooperPrototype=null;
+let localStormtrooperGroundOffset=0;
+function localStormtrooperClone(scale=4.6){
+  if(!localStormtrooperPrototype)return null;
+  const clone=localStormtrooperPrototype.clone(true);
+  clone.scale.setScalar(scale);
+  clone.position.y=-(localStormtrooperGroundOffset*scale);
+  clone.traverse(child=>{
+    if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}
+  });
+  return clone;
+}
+
+async function addLocalSwgCharacter(){
+  if(!materials.stormtrooperReady)return;
+  try{
+    const response=await fetch('./assets/local-swg/manifest.json',{cache:'no-store'});
+    if(!response.ok)return;
+    const manifest=await response.json();
+    const character=manifest.characters?.stormtrooper;
+    if(!character?.url)return;
+    const loader=new GLTFLoader();
+    const gltf=await new Promise((resolve,reject)=>loader.load(character.url,resolve,undefined,reject));
+    const object=gltf.scene;
+    object.traverse(child=>{
+      if(!child.isMesh)return;
+      const shaderName=child.material?.name||'';
+      child.material=materials.stormtrooperMaterial(shaderName);
+      child.castShadow=true;
+      child.receiveShadow=true;
+      child.userData.swgShader=shaderName;
+    });
+    object.userData.swgSource=character.virtualPath;
+    object.userData.swgArchive=character.archive;
+    localStormtrooperPrototype=object;
+    localStormtrooperGroundOffset=Number(character.groundOffset)||0;
+    torso.visible=false;
+    head.visible=false;
+    rifle.visible=false;
+    const playerAvatar=localStormtrooperClone(6.4);
+    playerAvatar.name='local-swg-stormtrooper-player';
+    player.add(playerAvatar);
+    console.info(`Loaded local SWG character ${character.virtualPath} from ${character.archive}`);
+  }catch(error){
+    console.warn('Local SWG Stormtrooper could not be loaded; keeping the capsule fallback.',error);
+  }
+}
+
 function addShip(x,y,z,rot=0,scale=1){
   const group=new THREE.Group();
   const body=new THREE.Mesh(new THREE.BoxGeometry(30,6,70),materials.ship); group.add(body);
@@ -226,9 +276,12 @@ function buildCrowd(){
   for(let i=0;i<72;i++){
     const a=rrange(0,Math.PI*2),rad=rrange(150,760);
     const x=Math.cos(a)*rad,z=Math.sin(a)*rad;
-    const agent=new THREE.Mesh(geo,mat);
-    agent.position.set(x,terrainHeight(x,z)+1.8,z);
+    const agent=localStormtrooperPrototype?localStormtrooperClone(4.6):new THREE.Mesh(geo,mat);
+    const groundOffset=localStormtrooperPrototype?0:1.8;
+    agent.position.set(x,terrainHeight(x,z)+groundOffset,z);
     agent.castShadow=true;
+    agent.receiveShadow=true;
+    agent.userData.groundOffset=groundOffset;
     agent.userData.dir=rrange(0,Math.PI*2);
     agent.userData.turn=rrange(2,7);
     scene.add(agent);crowd.push(agent);
@@ -242,7 +295,7 @@ function updateCrowd(dt){
     const nz=a.position.z+Math.cos(a.userData.dir)*dt*2.2;
     const r=Math.hypot(nx,nz);
     if(r>820||r<120||collides(nx,nz)){a.userData.dir+=Math.PI*.7;continue;}
-    a.position.x=nx;a.position.z=nz;a.position.y=terrainHeight(nx,nz)+1.8;a.rotation.y=a.userData.dir+Math.PI;
+    a.position.x=nx;a.position.z=nz;a.position.y=terrainHeight(nx,nz)+a.userData.groundOffset;a.rotation.y=a.userData.dir+Math.PI;
   }
 }
 
@@ -604,7 +657,7 @@ function addAtmosphere(){
   const moon=new THREE.Mesh(new THREE.SphereGeometry(28,18,12),new THREE.MeshBasicMaterial({color:0xf1c88f})); moon.position.set(-850,440,-2300); scene.add(moon);
 }
 
-buildTerrain(); buildCity(); await addLocalSwgMesh(); buildSkyTraffic(); buildCrowd(); buildHubs(); buildResourceMeshes(); spawnDrones(); addAtmosphere();
+buildTerrain(); buildCity(); await addLocalSwgMesh(); await addLocalSwgCharacter(); buildSkyTraffic(); buildCrowd(); buildHubs(); buildResourceMeshes(); spawnDrones(); addAtmosphere();
 player.position.set(40,terrainHeight(40,1150),1150);
 
 const clock=new THREE.Clock();

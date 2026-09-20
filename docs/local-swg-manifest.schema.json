@@ -55,6 +55,60 @@
     "selections": { "type": "object" },
     "failedRoles": { "type": "object" },
     "meshCandidates": { "type": "array" },
+    "characterCandidates": { "type": "array" },
+    "characterFailures": { "type": "object" },
+    "characters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "archive", "virtualPath"],
+        "properties": {
+          "url": { "type": "string" },
+          "bin": { "type": "string" },
+          "archive": { "type": "string" },
+          "archivePath": { "type": "string" },
+          "archiveRank": { "type": "integer", "minimum": 0 },
+          "virtualPath": { "type": "string" },
+          "shaderBindings": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "textures": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["url", "archive", "virtualPath", "kind"],
+              "properties": {
+                "url": { "type": "string" },
+                "archive": { "type": "string" },
+                "archivePath": { "type": "string" },
+                "archiveRank": { "type": "integer", "minimum": 0 },
+                "virtualPath": { "type": "string" },
+                "kind": { "type": "string" },
+                "uncompressedSize": { "type": "integer", "minimum": 0 },
+                "sourceKind": { "type": "string" },
+                "sourcePath": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "failedTextures": { "type": "object" },
+          "sourceSubmeshes": { "type": "integer", "minimum": 0 },
+          "hiddenSubmeshes": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0 }
+          },
+          "groundOffset": { "type": "number" },
+          "submeshes": { "type": "integer", "minimum": 0 },
+          "vertices": { "type": "integer", "minimum": 0 },
+          "indices": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
     "meshProof": {
       "anyOf": [
         { "type": "null" },

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import struct
 import sys
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ except ImportError:  # pragma: no cover - supports importing as tools.convert_sw
 
 
 FORM = b"FORM"
+DDS_PATH_PATTERN = re.compile(rb"texture/[A-Za-z0-9_./-]+\.dds", re.IGNORECASE)
 
 
 @dataclass
@@ -43,6 +45,15 @@ class MeshSubmesh:
     normals: list[tuple[float, float, float]]
     uvs: list[tuple[float, float]]
     indices: list[int]
+
+
+def extract_shader_texture_paths(blob: bytes) -> list[str]:
+    """Return deterministic local DDS paths embedded in an SWG shader IFF."""
+    paths = {
+        match.group(0).decode("ascii", errors="replace").lower()
+        for match in DDS_PATH_PATTERN.finditer(blob)
+    }
+    return sorted(paths)
 
 
 def parse_iff_nodes(blob: bytes, start: int = 0, end: int | None = None) -> list[IffNode]:
@@ -183,6 +194,38 @@ def _bounds(positions: list[tuple[float, float, float]]) -> tuple[list[float], l
     return minimum, maximum
 
 
+def find_display_base_submeshes(submeshes: list[MeshSubmesh]) -> list[int]:
+    """Find the broad, low plinth included by some static statue meshes.
+
+    This is deliberately conservative and geometry-based. It only marks a
+    submesh when it starts at the overall floor, ends below 30% of the asset
+    height, and spans almost the full horizontal footprint. A regular body
+    or weapon group therefore remains visible.
+    """
+    positioned = [(index, submesh) for index, submesh in enumerate(submeshes) if submesh.positions]
+    if len(positioned) < 2:
+        return []
+    all_positions = [position for _, submesh in positioned for position in submesh.positions]
+    overall_min, overall_max = _bounds(all_positions)
+    height = overall_max[1] - overall_min[1]
+    overall_width = max(overall_max[0] - overall_min[0], overall_max[2] - overall_min[2])
+    if height <= 0 or overall_width <= 0:
+        return []
+    floor_tolerance = max(0.03, height * 0.02)
+    base_top = overall_min[1] + height * 0.30
+    hidden: list[int] = []
+    for index, submesh in positioned:
+        minimum, maximum = _bounds(submesh.positions)
+        width = max(maximum[0] - minimum[0], maximum[2] - minimum[2])
+        if (
+            minimum[1] <= overall_min[1] + floor_tolerance
+            and maximum[1] <= base_top
+            and width >= overall_width * 0.90
+        ):
+            hidden.append(index)
+    return hidden
+
+
 def write_gltf(submeshes: list[MeshSubmesh], output_gltf: Path, output_bin: Path, source: AssetEntry) -> dict:
     buffer = bytearray()
     buffer_views: list[dict] = []
@@ -276,7 +319,15 @@ def write_gltf(submeshes: list[MeshSubmesh], output_gltf: Path, output_bin: Path
     return {"submeshes": len(meshes), "vertices": sum(len(mesh.positions) for mesh in submeshes), "indices": sum(len(mesh.indices) for mesh in submeshes)}
 
 
-def choose_mesh(entries: Iterable[AssetEntry]) -> AssetEntry | None:
+def choose_mesh(entries: Iterable[AssetEntry], preferred_virtual_path: str | None = None) -> AssetEntry | None:
+    if preferred_virtual_path:
+        exact_matches = sorted(
+            (entry for entry in entries if entry.virtual_path == preferred_virtual_path),
+            key=lambda entry: (-entry.archive_rank, entry.archive.name.lower()),
+        )
+        if exact_matches:
+            return exact_matches[0]
+
     exact = "appearance/mesh/ins_all_min_moisture_s01_u0_l0.msh"
     exact_matches = sorted((entry for entry in entries if entry.virtual_path == exact), key=lambda entry: entry.archive.name.lower())
     if exact_matches:
@@ -296,12 +347,23 @@ def convert_from_client(source: Path, output_gltf: Path, output_bin: Path) -> tu
     return convert_from_inventory(inventory, output_gltf, output_bin)
 
 
-def convert_from_inventory(entries: Iterable[AssetEntry], output_gltf: Path, output_bin: Path) -> tuple[AssetEntry, dict]:
+def convert_from_inventory(
+    entries: Iterable[AssetEntry],
+    output_gltf: Path,
+    output_bin: Path,
+    preferred_virtual_path: str | None = None,
+    exclude_submesh_indices: Iterable[int] | None = None,
+) -> tuple[AssetEntry, dict]:
     entries = list(entries)
-    entry = choose_mesh(entries)
+    entry = choose_mesh(entries, preferred_virtual_path)
     if entry is None:
         raise FileNotFoundError("no reusable Tatooine/moisture/starport .msh candidate found")
     submeshes = parse_static_mesh(decode_tre_entry(entry.archive, entry.metadata))
+    excluded = set(exclude_submesh_indices or ())
+    if excluded:
+        submeshes = [submesh for index, submesh in enumerate(submeshes) if index not in excluded]
+        if not submeshes:
+            raise ValueError("all MSH submeshes were excluded")
     summary = write_gltf(submeshes, output_gltf, output_bin, entry)
     return entry, summary
 

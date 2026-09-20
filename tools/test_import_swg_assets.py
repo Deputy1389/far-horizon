@@ -15,6 +15,7 @@ from import_swg_assets import (
     is_valid_dds_payload,
     read_tre_index,
     search_entries,
+    select_character_mesh,
     select_asset,
     static_asset_candidates,
 )
@@ -67,6 +68,19 @@ class ImporterCoreTests(unittest.TestCase):
         candidates = static_asset_candidates(entries, ".MSH")
 
         self.assertEqual([entry.virtual_path for entry in candidates], ["appearance/mesh/ins_all_min_moisture_s01_u0_l0.msh"])
+
+    def test_character_selection_prefers_full_stormtrooper_body_over_props(self) -> None:
+        entries = [
+            AssetEntry("appearance/mesh/stormtrooper_helmet_decor_l0.msh", Path("helmet.tre"), {}),
+            AssetEntry("appearance/mesh/frn_vet_stormtrooper_toy_l0.msh", Path("toy.tre"), {}),
+            AssetEntry("appearance/mesh/wp_rifle_snow_trooper_l0.msh", Path("weapon.tre"), {}),
+            AssetEntry("appearance/mesh/frn_statue_stormtrooper_l0.msh", Path("body.tre"), {}),
+        ]
+
+        selected = select_character_mesh(entries, "stormtrooper")
+
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected.virtual_path, "appearance/mesh/frn_statue_stormtrooper_l0.msh")
 
     def test_dds_header_validation_rejects_non_dds_payload(self) -> None:
         self.assertFalse(is_valid_dds_payload(b"DDS fixture"))
