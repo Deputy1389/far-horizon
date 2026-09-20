@@ -23,9 +23,12 @@ const PRONE := "prone"
 @export var step_height := 0.42
 @export var mantle_reach := 0.95
 @export var mantle_height := 1.45
+@export var health_regen_delay := 4.0
+@export var health_regen_per_second := 18.0
 
 var maximum_health := 100.0
 var health := 100.0
+var health_regen_wait := 0.0
 var stance := STAND
 var pitch := 0.0
 var gravity := 18.0
@@ -109,6 +112,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	jump_cooldown = maxf(0.0, jump_cooldown - delta)
 	jump_buffer = maxf(0.0, jump_buffer - delta)
+	_update_health_regen(delta)
 
 	if active_vehicle != null and is_instance_valid(active_vehicle):
 		_update_vehicle_mode()
@@ -325,8 +329,18 @@ func add_recoil(pitch_degrees: float, yaw_degrees: float) -> void:
 	head.rotation.x = pitch
 	rotate_y(deg_to_rad(yaw_degrees))
 
+func _update_health_regen(delta: float) -> void:
+	health_regen_wait = maxf(0.0, health_regen_wait - delta)
+	if health <= 0.0 or health >= maximum_health or health_regen_wait > 0.0:
+		return
+	var previous := health
+	health = minf(maximum_health, health + health_regen_per_second * delta)
+	if absf(health - previous) >= 0.01:
+		health_changed.emit(health, maximum_health)
+
 func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Vector3.ZERO, _source = null) -> void:
 	health = maxf(0.0, health - amount)
+	health_regen_wait = health_regen_delay
 	health_changed.emit(health, maximum_health)
 	damaged.emit(amount)
 	if health <= 0.0:
@@ -334,4 +348,5 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Ve
 
 func restore_full_health() -> void:
 	health = maximum_health
+	health_regen_wait = 0.0
 	health_changed.emit(health, maximum_health)
