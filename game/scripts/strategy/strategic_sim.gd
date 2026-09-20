@@ -22,10 +22,10 @@ func configure(origin: FloatingOrigin) -> void:
 
 func initialize_default_war() -> void:
 	nodes = {
-		"rebel_outpost": _node("Rebel Outpost", Vector2(0.0, 430.0), "rebel", 85.0, 12.0),
-		"mos_eisley": _node("Mos Eisley", Vector2(0.0, -420.0), "imperial", 125.0, 35.0),
-		"south_checkpoint": _node("South Checkpoint", Vector2(40.0, 40.0), "imperial", 42.0, 8.0),
-		"imperial_garrison": _node("Imperial Garrison", Vector2(380.0, -760.0), "imperial", 180.0, 5.0),
+		"rebel_outpost": _node("Rebel Outpost", Vector2(0.0, 180.0), "rebel", 85.0, 12.0),
+		"mos_eisley": _node("Mos Eisley", Vector2(0.0, -260.0), "imperial", 125.0, 35.0),
+		"south_checkpoint": _node("South Checkpoint", Vector2(35.0, -35.0), "imperial", 42.0, 8.0),
+		"imperial_garrison": _node("Imperial Garrison", Vector2(420.0, -650.0), "imperial", 180.0, 5.0),
 	}
 	routes = [
 		{"a": "rebel_outpost", "b": "south_checkpoint"},
