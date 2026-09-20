@@ -16,6 +16,7 @@ var wall_material := StandardMaterial3D.new()
 var roof_material := StandardMaterial3D.new()
 var road_material := StandardMaterial3D.new()
 var accent_material := StandardMaterial3D.new()
+var landmark_material := StandardMaterial3D.new()
 
 func configure(planet_ref: ProceduralPlanet, center_xz: Vector2) -> void:
 	planet = planet_ref
@@ -37,7 +38,13 @@ func _setup_materials() -> void:
 	accent_material.albedo_color = Color(0.22, 0.25, 0.25)
 	accent_material.metallic = 0.35
 	accent_material.roughness = 0.62
+	landmark_material.albedo_color = Color(0.52, 0.42, 0.31)
+	landmark_material.roughness = 0.9
 
+	var capital_texture := SwgAssetBridge.texture_for_role("capitalWall")
+	if capital_texture != null:
+		landmark_material.albedo_texture = capital_texture
+		landmark_material.albedo_color = Color.WHITE
 	var wall_texture := SwgAssetBridge.texture_for_role("wall")
 	if wall_texture != null:
 		wall_material.albedo_texture = wall_texture
@@ -58,6 +65,7 @@ func _setup_materials() -> void:
 func _generate() -> void:
 	_generate_roads()
 	_generate_blocks()
+	_generate_landmark()
 	_generate_garrison()
 	_generate_cover()
 	_place_imported_environment_proof()
@@ -181,6 +189,76 @@ func _add_building(offset: Vector2, size: Vector3) -> void:
 		awning.position = Vector3(0.0, min(3.1, size.y * 0.55), -size.z * 0.5 - 1.15)
 		awning.material_override = accent_material
 		root.add_child(awning)
+
+func _generate_landmark() -> void:
+	var offset := Vector2(118.0, -92.0)
+	var root := Node3D.new()
+	root.name = "StarportLandmark"
+	root.position = _surface_local(offset.x, offset.y)
+	add_child(root)
+
+	var base_body := StaticBody3D.new()
+	root.add_child(base_body)
+
+	var base_mesh_instance := MeshInstance3D.new()
+	var base_mesh := BoxMesh.new()
+	base_mesh.size = Vector3(54.0, 10.0, 46.0)
+	base_mesh_instance.mesh = base_mesh
+	base_mesh_instance.position.y = 5.0
+	base_mesh_instance.material_override = landmark_material
+	base_body.add_child(base_mesh_instance)
+
+	var base_collision := CollisionShape3D.new()
+	var base_shape := BoxShape3D.new()
+	base_shape.size = base_mesh.size
+	base_collision.shape = base_shape
+	base_collision.position = base_mesh_instance.position
+	base_body.add_child(base_collision)
+
+	var tower_body := StaticBody3D.new()
+	tower_body.position = Vector3(7.0, 0.0, -2.0)
+	root.add_child(tower_body)
+
+	var tower_mesh_instance := MeshInstance3D.new()
+	var tower_mesh := CylinderMesh.new()
+	tower_mesh.top_radius = 5.2
+	tower_mesh.bottom_radius = 7.8
+	tower_mesh.height = 42.0
+	tower_mesh.radial_segments = 12
+	tower_mesh_instance.mesh = tower_mesh
+	tower_mesh_instance.position.y = 26.0
+	tower_mesh_instance.material_override = landmark_material
+	tower_body.add_child(tower_mesh_instance)
+
+	var tower_collision := CollisionShape3D.new()
+	var tower_shape := CylinderShape3D.new()
+	tower_shape.radius = 7.8
+	tower_shape.height = 42.0
+	tower_collision.shape = tower_shape
+	tower_collision.position = tower_mesh_instance.position
+	tower_body.add_child(tower_collision)
+
+	var spire := MeshInstance3D.new()
+	var spire_mesh := CylinderMesh.new()
+	spire_mesh.top_radius = 0.22
+	spire_mesh.bottom_radius = 0.42
+	spire_mesh.height = 14.0
+	spire_mesh.radial_segments = 6
+	spire.mesh = spire_mesh
+	spire.position = Vector3(7.0, 54.0, -2.0)
+	spire.material_override = accent_material
+	root.add_child(spire)
+
+	var pad := MeshInstance3D.new()
+	var pad_mesh := CylinderMesh.new()
+	pad_mesh.top_radius = 38.0
+	pad_mesh.bottom_radius = 38.0
+	pad_mesh.height = 0.18
+	pad_mesh.radial_segments = 32
+	pad.mesh = pad_mesh
+	pad.position = Vector3(-34.0, 0.12, 9.0)
+	pad.material_override = road_material
+	root.add_child(pad)
 
 func _generate_garrison() -> void:
 	garrison_local = _surface_local(0.0, 0.0)
