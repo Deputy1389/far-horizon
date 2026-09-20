@@ -574,6 +574,65 @@ def is_valid_dds_file(path: Path) -> bool:
         return False
 
 
+DDSD_LINEARSIZE = 0x00080000
+
+_DDS_BLOCK_BYTES: dict[bytes, int] = {
+    b"DXT1": 8,
+    b"ATI1": 8,
+    b"BC4U": 8,
+    b"BC4S": 8,
+    b"DXT2": 16,
+    b"DXT3": 16,
+    b"DXT4": 16,
+    b"DXT5": 16,
+    b"ATI2": 16,
+    b"BC5U": 16,
+    b"BC5S": 16,
+}
+
+
+def normalize_dds_payload_for_godot(data: bytes) -> tuple[bytes, bool]:
+    """Repair legacy SWG DDS linear-size headers that modern Godot rejects.
+
+    SWG-era DDS writers commonly stored a whole mip-chain byte count in
+    dwPitchOrLinearSize. Modern Godot validates that field against the top-level
+    block-compressed image size. The pixel payload is already valid, so changing
+    this one header field preserves the original texture while making it standards
+    compliant enough for Godot's DDS importer.
+    """
+    if not is_valid_dds_payload(data):
+        return data, False
+
+    flags = struct.unpack_from("<I", data, 8)[0]
+    if not (flags & DDSD_LINEARSIZE):
+        return data, False
+
+    height, width, declared_size = struct.unpack_from("<III", data, 12)
+    fourcc = data[84:88]
+    block_bytes = _DDS_BLOCK_BYTES.get(fourcc)
+    if block_bytes is None:
+        return data, False
+
+    expected_size = max(1, (width + 3) // 4) * max(1, (height + 3) // 4) * block_bytes
+    if declared_size == expected_size:
+        return data, False
+
+    patched = bytearray(data)
+    struct.pack_into("<I", patched, 20, expected_size)
+    return bytes(patched), True
+
+
+def normalize_dds_file_for_godot(path: Path) -> bool:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return False
+    normalized, changed = normalize_dds_payload_for_godot(data)
+    if changed:
+        path.write_bytes(normalized)
+    return changed
+
+
 def _known_plain_magic(data: bytes) -> bool:
     return data.startswith((b"DDS ", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
 
@@ -740,6 +799,9 @@ def main() -> int:
                     continue
             else:
                 ok = True
+
+            if ok:
+                normalize_dds_file_for_godot(destination)
 
             if ok and not is_valid_dds_file(destination):
                 error = "decoded candidate did not have a valid DDS header"
@@ -961,6 +1023,7 @@ def main() -> int:
                         failed_texture_paths[shader_texture_path] = error or "TRE extraction failed"
                         destination.unlink(missing_ok=True)
                         continue
+                normalize_dds_file_for_godot(destination)
                 if not is_valid_dds_file(destination):
                     failed_texture_paths[shader_texture_path] = "decoded shader reference did not have a valid DDS header"
                     destination.unlink(missing_ok=True)
@@ -1028,6 +1091,7 @@ def main() -> int:
 
     print()
     print(f"Imported {imported}/{len(ROLE_RULES)} curated SWG material roles.")
+    print("DDS compatibility: normalized legacy linear-size headers for modern Godot when needed.")
     if failures:
         print("Roles without a usable candidate:")
         for role, reason in failures.items():
