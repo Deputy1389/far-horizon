@@ -52,6 +52,27 @@
         "additionalProperties": true
       }
     },
+    "audio": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "archive", "virtualPath", "kind"],
+        "properties": {
+          "url": { "type": "string" },
+          "archive": { "type": "string" },
+          "archivePath": { "type": "string" },
+          "archiveRank": { "type": "integer", "minimum": 0 },
+          "virtualPath": { "type": "string" },
+          "kind": { "type": "string" },
+          "uncompressedSize": { "type": "integer", "minimum": 0 },
+          "compression": { "type": "integer", "minimum": 0 },
+          "sourceKind": { "type": "string" },
+          "sourcePath": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "audioFailures": { "type": "object" },
     "selections": { "type": "object" },
     "failedRoles": { "type": "object" },
     "meshCandidates": { "type": "array" },
