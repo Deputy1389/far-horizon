@@ -68,6 +68,26 @@ static func texture_for_role(role: String) -> Texture2D:
 	var resource = load(path)
 	return resource as Texture2D if resource is Texture2D else null
 
+static func audio_for_role(role: String) -> AudioStream:
+	var data: Dictionary = manifest()
+	var audio_value: Variant = data.get("audio", {})
+	if not audio_value is Dictionary:
+		return null
+	var audio: Dictionary = audio_value
+	var descriptor_value: Variant = audio.get(role, {})
+	if not descriptor_value is Dictionary:
+		return null
+	var descriptor: Dictionary = descriptor_value
+	var url := String(descriptor.get("url", ""))
+	if url.is_empty():
+		return null
+	var path := local_url_to_resource(url)
+	if not ResourceLoader.exists(path):
+		return null
+	var resource: Resource = load(path)
+	return resource as AudioStream if resource is AudioStream else null
+
+
 static func instantiate_mesh_proof() -> Node3D:
 	var data := manifest()
 	var descriptor = data.get("meshProof", {})
