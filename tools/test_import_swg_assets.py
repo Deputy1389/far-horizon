@@ -13,6 +13,7 @@ from import_swg_assets import (
     decode_tre_entry,
     decrypt_twofish_ecb,
     is_valid_dds_payload,
+    is_valid_wav_file,
     normalize_dds_payload_for_godot,
     read_tre_index,
     search_entries,
@@ -124,6 +125,15 @@ class ImporterCoreTests(unittest.TestCase):
 
         self.assertFalse(changed)
         self.assertEqual(normalized, bytes(header))
+
+    def test_wav_validation_accepts_standard_riff_wave(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "sample.wav"
+            path.write_bytes(b"RIFF" + struct.pack("<I", 4) + b"WAVE")
+            self.assertTrue(is_valid_wav_file(path))
+
+            path.write_bytes(b"NOTW" + struct.pack("<I", 4) + b"WAVE")
+            self.assertFalse(is_valid_wav_file(path))
 
     def test_restoration_twofish_matches_known_vector(self) -> None:
         key = bytes(range(16))
