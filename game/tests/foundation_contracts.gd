@@ -2,6 +2,7 @@ extends SceneTree
 
 func _init() -> void:
 	_test_planet_coordinates()
+	_test_floating_origin_rebase()
 	_test_strategy_state()
 	_test_weapon_contracts()
 	print("FOUNDATION_CONTRACTS_OK")
@@ -28,6 +29,36 @@ func _test_planet_coordinates() -> void:
 
 	var surface := PlanetMath.tangent_surface_point(origin, basis, 900.0, -700.0, radius, 0.0)
 	assert(absf(PlanetMath.length64(surface) - radius) < 0.01)
+
+func _test_floating_origin_rebase() -> void:
+	var origin := FloatingOrigin.new()
+	get_root().add_child(origin)
+	origin.configure(6_000_000.0, 11.0, 42.0)
+
+	var tracked := Node3D.new()
+	get_root().add_child(tracked)
+	tracked.global_position = Vector3(1025.0, 12.0, -340.0)
+	origin.track(tracked)
+
+	var anchor := Node3D.new()
+	get_root().add_child(anchor)
+	anchor.add_to_group("planet_anchor")
+	anchor.global_position = Vector3(1260.0, 7.0, 180.0)
+
+	var before := origin.absolute_position(anchor.global_position)
+	origin._rebase()
+	var after := origin.absolute_position(anchor.global_position)
+	var error := sqrt(
+		pow(before[0] - after[0], 2.0)
+		+ pow(before[1] - after[1], 2.0)
+		+ pow(before[2] - after[2], 2.0)
+	)
+	assert(error < 0.01)
+	assert(Vector2(tracked.global_position.x, tracked.global_position.z).length() < 0.2)
+
+	anchor.free()
+	tracked.free()
+	origin.free()
 
 func _test_strategy_state() -> void:
 	var origin := FloatingOrigin.new()
