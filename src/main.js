@@ -217,6 +217,7 @@ let localStormtrooperPrototype=null;
 let localStormtrooperGroundOffset=0;
 let localStormtrooperAvatar=null;
 let localStormtrooperAnimations=[];
+let localStormtrooperAnimationSpeeds={};
 let localStormtrooperRigged=false;
 function stormtrooperAnimationClip(name){
   const wanted=String(name||'').toLowerCase();
@@ -225,22 +226,35 @@ function stormtrooperAnimationClip(name){
     || localStormtrooperAnimations[0]
     || null;
 }
-function playStormtrooperAnimation(object,name){
+function stormtrooperAnimationTimeScale(object,clip,targetSpeed=0){
+  const authoredSpeed=Number(localStormtrooperAnimationSpeeds[clip.name])||0;
+  const modelScale=Math.max(Math.abs(object.scale.x),.001);
+  if(!(targetSpeed>0)||!(authoredSpeed>0))return 1;
+  // LOCT speeds are authored in the source character's local units. The
+  // converted body is scaled into gameplay space, so match the clip's foot
+  // travel to the actual player speed instead of accepting obvious sliding.
+  return THREE.MathUtils.clamp(targetSpeed/(authoredSpeed*modelScale),.5,2.5);
+}
+function playStormtrooperAnimation(object,name,targetSpeed=0){
   const mixer=object?.userData?.animationMixer;
   if(!mixer)return;
   const clip=stormtrooperAnimationClip(name);
   if(!clip)return;
-  if(object.userData.activeAnimation===clip.name)return;
+  const timeScale=stormtrooperAnimationTimeScale(object,clip,targetSpeed);
+  if(object.userData.activeAnimation===clip.name){
+    object.userData.activeAction?.setEffectiveTimeScale(timeScale);
+    return;
+  }
   const previous=object.userData.activeAction;
   const action=mixer.clipAction(clip);
-  action.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(.18).play();
+  action.reset().setEffectiveTimeScale(timeScale).setEffectiveWeight(1).fadeIn(.18).play();
   if(previous&&previous!==action)previous.fadeOut(.18);
   object.userData.activeAction=action;
   object.userData.activeAnimation=clip.name;
 }
-function updateStormtrooperAnimation(object,dt,moving,sprinting){
+function updateStormtrooperAnimation(object,dt,moving,sprinting,targetSpeed=0){
   if(!object?.userData?.animationMixer)return;
-  playStormtrooperAnimation(object,moving?(sprinting?'run':'walk'):'idle');
+  playStormtrooperAnimation(object,moving?(sprinting?'run':'walk'):'idle',moving?targetSpeed:0);
   object.userData.animationMixer.update(Math.max(0,dt));
   if(typeof window!=='undefined'&&object===localStormtrooperAvatar){
     window.__farHorizonCharacterStatus={
@@ -248,6 +262,7 @@ function updateStormtrooperAnimation(object,dt,moving,sprinting){
       clips:localStormtrooperAnimations.map(clip=>clip.name),
       active:object.userData.activeAnimation,
       mixerTime:object.userData.activeAction?.time||0,
+      blasterAttachedTo:object.userData.blasterAttachedTo||'root',
     };
   }
 }
@@ -256,7 +271,8 @@ function addStormtrooperBlaster(object){
   // The extracted MGN is the weighted armor body and does not contain the
   // equipped weapon. Keep the weapon as a small, deterministic presentation
   // attachment until the SWG appearance/weapon hardpoint chain is converted.
-  const mount=object;
+  const animatedMount=object.getObjectByName('rWrist');
+  const mount=animatedMount||object;
   const gun=new THREE.Group();
   const finish=materials.stormtrooperMaterial('weapon');
   const receiver=new THREE.Mesh(new THREE.BoxGeometry(.22,.2,.72),finish);
@@ -267,15 +283,25 @@ function addStormtrooperBlaster(object){
   barrel.rotation.x=Math.PI/2; barrel.position.set(0,.02,-.92); gun.add(barrel);
   const muzzle=new THREE.Object3D();
   muzzle.position.set(0,.02,-1.28); gun.add(muzzle);
-  gun.position.set(-.12,1.48,-.42);
-  // In the imported +Z character space the camera sees the rear three-quarter
-  // view, so rotate the compact rifle across the chest for a readable held
-  // silhouette while preserving its muzzle Object3D for bolt spawning.
-  gun.rotation.set(-.06,Math.PI/2,.10);
+  if(animatedMount){
+    // This is the inverse bind-space placement of the visible rifle pose
+    // relative to rWrist. The attachment therefore keeps following the real
+    // animated hand instead of floating at the character root.
+    // Keep the grip at the wrist origin; a large bind-space chest offset
+    // would swing away from the hand as the wrist rotates through the clips.
+    gun.position.set(0,.015,0);
+    gun.quaternion.set(.701,-.010,.713,-.009);
+  }else{
+    // Older or partial conversions can lack the wrist node; retain a readable
+    // root-mounted presentation attachment for that fallback.
+    gun.position.set(-.12,1.48,-.42);
+    gun.rotation.set(-.06,Math.PI/2,.10);
+  }
   gun.scale.setScalar(.48);
   gun.traverse(child=>{if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}});
   mount.add(gun);
   object.userData.blasterMuzzle=muzzle;
+  object.userData.blasterAttachedTo=animatedMount?.name||'root';
 }
 function localStormtrooperClone(scale=4.6){
   if(!localStormtrooperPrototype)return null;
@@ -305,7 +331,7 @@ function applyStormtrooperMotion(object,dt,inputMagnitude,speed,sprinting,baseY=
     // the parent and let the glTF animation provide the gait, avoiding the
     // old capsule-style root bob that made the statue look like it floated.
     object.position.y=baseY+(object.userData.groundCorrection||0);
-    updateStormtrooperAnimation(object,dt,inputMagnitude>0.001,sprinting);
+    updateStormtrooperAnimation(object,dt,inputMagnitude>0.001,sprinting,speed);
     object.rotation.x=-state.recoil*.025;
     return;
   }
@@ -337,6 +363,7 @@ async function addLocalSwgCharacter(){
     object.userData.swgSource=character.virtualPath;
     object.userData.swgArchive=character.archive;
     localStormtrooperAnimations=gltf.animations||[];
+    localStormtrooperAnimationSpeeds=character.animationSpeeds||{};
     localStormtrooperRigged=character.rigged===true&&localStormtrooperAnimations.length>0;
     object.userData.rigged=localStormtrooperRigged;
     localStormtrooperPrototype=object;

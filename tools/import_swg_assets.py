@@ -890,6 +890,10 @@ def main() -> int:
                         f"{converted_entry.virtual_path} ({character_summary['bones']} bones, "
                         f"{character_summary['animations']} animation clips)"
                     )
+                    print(
+                        f"CHARACTER skeleton {character_summary['skeletonArchive']} :: "
+                        f"{character_summary['skeleton']}"
+                    )
                 except Exception as exc:
                     print(f"CHARACTER rigged {role:<10} unavailable: {exc}; trying static fallback")
 

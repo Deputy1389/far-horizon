@@ -540,13 +540,17 @@ def parse_animation_clip(blob: bytes, name: str = "walk") -> AnimationClipData:
                 context,
                 skip_z_negation=_is_finger_chain_bone(bone_name),
             )
+        elif has_rotation:
+            raise ValueError(f"XFIN rotation index {rotation_index} is out of range for {bone_name!r}")
 
         for axis in range(3):
             if not (has_translation & (1 << (3 + axis))):
                 continue
             index = translation_indices[axis]
             if index >= len(chnl):
-                continue
+                raise ValueError(
+                    f"XFIN translation index {index} is out of range for {bone_name!r} axis {axis}"
+                )
             channel.translation_axis[axis] = _parse_chnl(chnl[index].data)
             max_frame = max([max_frame, *(key.frame for key in channel.translation_axis[axis])])
         channels.append(channel)
@@ -754,7 +758,7 @@ def write_skinned_gltf(
     output_gltf: Path,
     output_bin: Path,
     source: AssetEntry,
-) -> dict[str, int | bool]:
+) -> dict[str, object]:
     """Write weighted submeshes, a skeleton skin, and sampled glTF clips."""
     if not skeleton.bones:
         raise ValueError("cannot write a character without skeleton bones")
@@ -1015,7 +1019,17 @@ def write_skinned_gltf(
                 )
                 samplers.append({"input": time_accessor, "output": output_accessor, "interpolation": "LINEAR"})
                 channels.append({"sampler": len(samplers) - 1, "target": {"node": bone_node_indices[bone_index], "path": "translation"}})
-        animation_documents.append({"name": clip.name, "samplers": samplers, "channels": channels})
+        animation_documents.append(
+            {
+                "name": clip.name,
+                "samplers": samplers,
+                "channels": channels,
+                "extras": {
+                    "swgLocomotionSpeed": round(float(clip.average_translation_speed), 6),
+                    "swgLocomotionKeys": clip.locomotion_translation_keys,
+                },
+            }
+        )
 
     document = {
         "asset": {"version": "2.0", "generator": "Far Horizon local SWG skeletal converter"},
@@ -1048,6 +1062,10 @@ def write_skinned_gltf(
         "bones": len(skeleton.bones),
         "skins": 1,
         "animations": len(animation_documents),
+        "animationSpeeds": {
+            clip.name: round(float(clip.average_translation_speed), 6)
+            for clip in animations
+        },
         "rigged": True,
     }
 
@@ -1083,7 +1101,7 @@ def convert_from_inventory(
     output_bin: Path,
     *,
     preferred_virtual_path: str | None = None,
-) -> tuple[AssetEntry, dict[str, int | bool | list[str]]]:
+) -> tuple[AssetEntry, dict[str, object]]:
     entries = list(entries)
     mesh_entry = _ranked_entry(
         entries,
@@ -1115,6 +1133,7 @@ def convert_from_inventory(
     )
     animations: list[AnimationClipData] = []
     selected_animation_paths: list[str] = []
+    animation_sources: list[dict[str, str | int]] = []
     for animation_name, preferred_paths in animation_specs:
         animation_entry = _ranked_entry(entries, preferred_paths, ".ans", ("all_b",))
         if animation_entry is None:
@@ -1123,13 +1142,26 @@ def convert_from_inventory(
         clip = parse_animation_clip(decode_tre_entry(animation_entry.archive, animation_entry.metadata), animation_name)
         animations.append(clip)
         selected_animation_paths.append(animation_entry.virtual_path)
+        animation_sources.append(
+            {
+                "name": animation_name,
+                "archive": animation_entry.archive.name,
+                "archivePath": str(animation_entry.archive),
+                "archiveRank": animation_entry.archive_rank,
+                "virtualPath": animation_entry.virtual_path,
+            }
+        )
         print(f"CHARACTER animation {animation_name:<5} {animation_entry.archive.name} :: {animation_entry.virtual_path}")
     if not animations:
         raise ValueError("no usable all_b Stormtrooper animation clips found")
 
     summary = write_skinned_gltf(mesh, skeleton, animations, output_gltf, output_bin, mesh_entry)
     summary["skeleton"] = skeleton_entry.virtual_path
+    summary["skeletonArchive"] = skeleton_entry.archive.name
+    summary["skeletonArchivePath"] = str(skeleton_entry.archive)
+    summary["skeletonArchiveRank"] = skeleton_entry.archive_rank
     summary["animationPaths"] = selected_animation_paths
+    summary["animationSources"] = animation_sources
     return mesh_entry, summary
 
 
@@ -1162,6 +1194,9 @@ def main() -> int:
         f"Rig: {summary['bones']} bones, {summary['skins']} skin, "
         f"{summary['animations']} animation clips, {summary['vertices']:,} vertices"
     )
+    print(f"Skeleton: {summary['skeletonArchive']} :: {summary['skeleton']}")
+    for animation in summary.get("animationSources", []):
+        print(f"Animation {animation['name']}: {animation['archive']} :: {animation['virtualPath']}")
     return 0
 
 

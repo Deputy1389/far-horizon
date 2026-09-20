@@ -86,6 +86,7 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
             name="walk",
             frame_rate=30.0,
             duration_frames=2,
+            average_translation_speed=1.5,
             bones=[
                 AnimationBoneChannel(
                     bone_name="root",
@@ -111,6 +112,7 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
         self.assertIn("JOINTS_0", attributes)
         self.assertIn("WEIGHTS_0", attributes)
         self.assertEqual(document["animations"][0]["name"], "walk")
+        self.assertEqual(summary["animationSpeeds"], {"walk": 1.5})
 
     def test_prefers_the_highest_ranked_exact_skeletal_mesh_path(self) -> None:
         older = AssetEntry(

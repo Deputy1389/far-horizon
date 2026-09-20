@@ -110,9 +110,30 @@
           "skins": { "type": "integer", "minimum": 0 },
           "animations": { "type": "integer", "minimum": 0 },
           "skeleton": { "type": "string" },
+          "skeletonArchive": { "type": "string" },
+          "skeletonArchivePath": { "type": "string" },
+          "skeletonArchiveRank": { "type": "integer", "minimum": 0 },
           "animationPaths": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "animationSpeeds": {
+            "type": "object",
+            "additionalProperties": { "type": "number", "minimum": 0 }
+          },
+          "animationSources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "archive": { "type": "string" },
+                "archivePath": { "type": "string" },
+                "archiveRank": { "type": "integer", "minimum": 0 },
+                "virtualPath": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
           }
         },
         "additionalProperties": true
