@@ -5,7 +5,7 @@ extends Node3D
 @export var planet_radius := 6_000_000.0
 @export var chunk_size := 220.0
 @export var chunk_resolution := 17
-@export var chunk_radius := 3
+@export var chunk_radius := 5
 
 var origin_service: FloatingOrigin
 var player: Node3D
