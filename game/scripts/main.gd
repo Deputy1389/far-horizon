@@ -1,0 +1,142 @@
+extends Node3D
+
+var floating_origin: FloatingOrigin
+var planet: ProceduralPlanet
+var player: FPSController
+var city: CityGenerator
+var squads: SquadManager
+var strategy: StrategicSim
+var hud: DebugHud
+
+func _ready() -> void:
+	_install_input_map()
+	_build_environment()
+	_build_foundation_world()
+
+func _build_environment() -> void:
+	var environment_node := WorldEnvironment.new()
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.36, 0.22, 0.14)
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.86, 0.66, 0.5)
+	environment.ambient_light_energy = 0.72
+	environment.fog_enabled = true
+	environment.fog_light_color = Color(0.69, 0.47, 0.31)
+	environment.fog_density = 0.00045
+	environment_node.environment = environment
+	add_child(environment_node)
+
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-42.0, -28.0, 0.0)
+	sun.light_color = Color(1.0, 0.83, 0.67)
+	sun.light_energy = 1.35
+	sun.shadow_enabled = true
+	add_child(sun)
+
+func _build_foundation_world() -> void:
+	floating_origin = FloatingOrigin.new()
+	floating_origin.name = "FloatingOrigin"
+	add_child(floating_origin)
+	floating_origin.configure(6_000_000.0, 11.0, 42.0)
+
+	player = FPSController.new()
+	add_child(player)
+	player.global_position = Vector3(0.0, 6.0, 430.0)
+	floating_origin.track(player)
+
+	planet = ProceduralPlanet.new()
+	planet.name = "ProceduralPlanet"
+	add_child(planet)
+	planet.configure(floating_origin, player)
+	planet.generate_initial()
+	player.global_position = planet.surface_point(0.0, 430.0) + Vector3.UP * 0.08
+
+	city = CityGenerator.new()
+	city.name = "MosEisleyPrototype"
+	add_child(city)
+	city.configure(planet, Vector2(0.0, -420.0))
+
+	squads = SquadManager.new()
+	add_child(squads)
+
+	strategy = StrategicSim.new()
+	add_child(strategy)
+	strategy.initialize_default_war()
+
+	_spawn_enemies()
+	_spawn_capture_point()
+	_spawn_speeder()
+
+	hud = DebugHud.new()
+	add_child(hud)
+	hud.configure(player, floating_origin, strategy)
+
+	player.died.connect(_respawn_player)
+
+func _spawn_enemies() -> void:
+	var positions := city.combat_spawns
+	for index in range(min(positions.size(), 8)):
+		var soldier := EnemySoldier.new()
+		var squad_id := "garrison_a" if index < 4 else "garrison_b"
+		add_child(soldier)
+		var spawn := positions[index]
+		spawn.y += 0.15
+		soldier.configure(player, squads, squad_id, spawn)
+
+func _spawn_capture_point() -> void:
+	var capture := CapturePoint.new()
+	add_child(capture)
+	capture.global_position = city.garrison_global_position() + Vector3(0.0, 0.2, 0.0)
+	capture.configure(strategy, "mos_eisley")
+	capture.captured.connect(func(_faction: String) -> void:
+		strategy.event_logged.emit("Mos Eisley garrison objective secured. Strategic balance shifted toward the Rebels.")
+	)
+
+func _spawn_speeder() -> void:
+	var speeder := Speeder.new()
+	add_child(speeder)
+	var point := planet.surface_point(11.0, 395.0)
+	speeder.global_position = point + Vector3.UP * 1.5
+	speeder.rotation.y = PI
+
+func _respawn_player() -> void:
+	player.restore_full_health()
+	player.velocity = Vector3.ZERO
+	player.global_position = planet.surface_point(0.0, 430.0) + Vector3.UP * 0.08
+	strategy.apply_local_result("rebel_outpost", "imperial", 4.0)
+	strategy.event_logged.emit("You redeployed at the Rebel outpost. The failed assault cost local strength.")
+
+func _install_input_map() -> void:
+	_bind_key("move_forward", KEY_W)
+	_bind_key("move_back", KEY_S)
+	_bind_key("move_left", KEY_A)
+	_bind_key("move_right", KEY_D)
+	_bind_key("sprint", KEY_SHIFT)
+	_bind_key("jump", KEY_SPACE)
+	_bind_key("crouch", KEY_C)
+	_bind_key("prone", KEY_Z)
+	_bind_key("interact", KEY_E)
+	_bind_key("weapon_1", KEY_1)
+	_bind_key("weapon_2", KEY_2)
+	_bind_key("pause_mouse", KEY_ESCAPE)
+	_bind_mouse("fire", MOUSE_BUTTON_LEFT)
+	_bind_mouse("aim", MOUSE_BUTTON_RIGHT)
+
+func _bind_key(action: StringName, physical_keycode: Key) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	if not InputMap.action_get_events(action).is_empty():
+		return
+	var event := InputEventKey.new()
+	event.physical_keycode = physical_keycode
+	InputMap.action_add_event(action, event)
+
+func _bind_mouse(action: StringName, button: MouseButton) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	if not InputMap.action_get_events(action).is_empty():
+		return
+	var event := InputEventMouseButton.new()
+	event.button_index = button
+	InputMap.action_add_event(action, event)
