@@ -13,6 +13,7 @@ var driver: FPSController
 var gravity := 18.0
 var visual := Node3D.new()
 var seat := Marker3D.new()
+var engine_audio := AudioStreamPlayer3D.new()
 var hover_velocity := 0.0
 var bank := 0.0
 
@@ -22,6 +23,7 @@ func _ready() -> void:
 	floor_max_angle = deg_to_rad(55.0)
 	gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity", 18.0))
 	_build_body()
+	_setup_audio()
 
 func _build_body() -> void:
 	var collision := CollisionShape3D.new()
@@ -54,6 +56,18 @@ func _build_body() -> void:
 
 	seat.position = Vector3(0.0, 1.05, 0.15)
 	add_child(seat)
+
+func _setup_audio() -> void:
+	engine_audio.stream = SwgAssetBridge.audio_for_role("speederLoop")
+	engine_audio.unit_size = 8.0
+	engine_audio.max_distance = 90.0
+	engine_audio.volume_db = -14.0
+	engine_audio.finished.connect(_on_engine_audio_finished)
+	add_child(engine_audio)
+
+func _on_engine_audio_finished() -> void:
+	if driver != null and is_instance_valid(driver) and engine_audio.stream != null:
+		engine_audio.play()
 
 func interaction_text() -> String:
 	if driver == null:
@@ -108,6 +122,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
+	_update_engine_audio(speed_ratio)
 	var target_bank: float = -steer * speed_ratio * 0.28
 	bank = lerpf(bank, target_bank, 1.0 - exp(-delta * 7.0))
 	visual.rotation.z = bank
@@ -146,3 +161,16 @@ func _ground_height(point: Vector3) -> float:
 	if hit.is_empty():
 		return NAN
 	return float((hit["position"] as Vector3).y)
+
+
+func _update_engine_audio(speed_ratio: float) -> void:
+	if engine_audio.stream == null:
+		return
+	if driver == null or not is_instance_valid(driver):
+		if engine_audio.playing:
+			engine_audio.stop()
+		return
+	if not engine_audio.playing:
+		engine_audio.play()
+	engine_audio.pitch_scale = lerpf(0.78, 1.22, speed_ratio)
+	engine_audio.volume_db = lerpf(-15.0, -5.0, speed_ratio)
