@@ -130,7 +130,7 @@ func _combat_update(delta: float) -> void:
 	var target_position := target.global_position
 	var offset := global_position - target_position
 	offset.y = 0.0
-	var distance := max(offset.length(), 0.001)
+	var distance: float = maxf(offset.length(), 0.001)
 	var away := offset / distance
 	var side := Vector3.UP.cross(away).normalized()
 	var desired := target_position + away * preferred_distance
@@ -140,7 +140,7 @@ func _combat_update(delta: float) -> void:
 	elif squad_role == "flank_right":
 		desired -= side * 13.0
 	elif squad_role == "advance":
-		desired = target_position + away * max(12.0, preferred_distance - 6.0)
+		desired = target_position + away * maxf(12.0, preferred_distance - 6.0)
 	elif squad_role == "suppress":
 		desired = target_position + away * (preferred_distance + 5.0)
 
@@ -167,7 +167,7 @@ func _fire_at_target(distance: float) -> void:
 	fire_cooldown = rng.randf_range(0.42, 0.72)
 	var aim_point := target.global_position + Vector3.UP * 1.05
 	var direction := (aim_point - muzzle.global_position).normalized()
-	var inaccuracy := lerpf(0.012, 0.032, clamp(distance / engage_distance, 0.0, 1.0))
+	var inaccuracy: float = lerpf(0.012, 0.032, clampf(distance / engage_distance, 0.0, 1.0))
 	direction = (direction
 		+ global_basis.x * rng.randf_range(-inaccuracy, inaccuracy)
 		+ global_basis.y * rng.randf_range(-inaccuracy, inaccuracy)
