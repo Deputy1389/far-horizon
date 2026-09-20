@@ -87,16 +87,23 @@ static func instantiate_mesh_proof() -> Node3D:
 
 
 static func _character_texture_descriptor(role: String) -> Dictionary:
-	var descriptor := manifest().get("characters", {}).get(role, {})
-	if not descriptor is Dictionary:
+	var data: Dictionary = manifest()
+	var characters_value: Variant = data.get("characters", {})
+	if not characters_value is Dictionary:
 		return {}
-	var textures = descriptor.get("textures", {})
-	if not textures is Dictionary:
+	var characters: Dictionary = characters_value
+	var descriptor_value: Variant = characters.get(role, {})
+	if not descriptor_value is Dictionary:
 		return {}
+	var descriptor: Dictionary = descriptor_value
+	var textures_value: Variant = descriptor.get("textures", {})
+	if not textures_value is Dictionary:
+		return {}
+	var textures: Dictionary = textures_value
 
 	var candidates: Array[Dictionary] = []
 	for key in textures.keys():
-		var value = textures[key]
+		var value: Variant = textures[key]
 		if not value is Dictionary:
 			continue
 		var path := String(key).to_lower()
@@ -114,7 +121,10 @@ static func _character_texture_descriptor(role: String) -> Dictionary:
 	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return int(a["penalty"]) < int(b["penalty"])
 	)
-	return candidates[0]["value"] if not candidates.is_empty() else {}
+	if candidates.is_empty():
+		return {}
+	var selected: Dictionary = candidates[0]["value"]
+	return selected
 
 
 static func _texture_from_descriptor(descriptor: Dictionary) -> Texture2D:
@@ -137,7 +147,7 @@ static func _apply_character_texture(root: Node3D, role: String) -> void:
 
 	var pending: Array[Node] = [root]
 	while not pending.is_empty():
-		var node := pending.pop_back()
+		var node: Node = pending.pop_back()
 		for child in node.get_children():
 			pending.append(child)
 		if not node is MeshInstance3D:
@@ -147,7 +157,7 @@ static func _apply_character_texture(root: Node3D, role: String) -> void:
 		if mesh_instance.mesh == null:
 			continue
 		for surface_index in range(mesh_instance.mesh.get_surface_count()):
-			var original := mesh_instance.get_active_material(surface_index)
+			var original: Material = mesh_instance.get_active_material(surface_index)
 			var material: StandardMaterial3D
 			if original is StandardMaterial3D:
 				material = (original as StandardMaterial3D).duplicate()
