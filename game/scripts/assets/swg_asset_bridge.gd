@@ -46,6 +46,7 @@ static func instantiate_stormtrooper() -> Node3D:
 	visual.rotation.y = PI
 	var ground_offset := float(descriptor.get("groundOffset", 0.0))
 	visual.position.y = -ground_offset * scale_factor
+	_apply_character_texture(visual, "stormtrooper")
 	return visual
 
 static func texture_for_role(role: String) -> Texture2D:
@@ -58,7 +59,7 @@ static func texture_for_role(role: String) -> Texture2D:
 	if descriptor is String:
 		url = descriptor
 	elif descriptor is Dictionary:
-		url = String(descriptor.get("url", ""))
+		url = String(descriptor.get("godotUrl", descriptor.get("url", "")))
 	if url.is_empty():
 		return null
 	var path := local_url_to_resource(url)
@@ -83,3 +84,75 @@ static func instantiate_mesh_proof() -> Node3D:
 		return null
 	var scene := (resource as PackedScene).instantiate()
 	return scene as Node3D if scene is Node3D else null
+
+
+static func _character_texture_descriptor(role: String) -> Dictionary:
+	var descriptor := manifest().get("characters", {}).get(role, {})
+	if not descriptor is Dictionary:
+		return {}
+	var textures = descriptor.get("textures", {})
+	if not textures is Dictionary:
+		return {}
+
+	var candidates: Array[Dictionary] = []
+	for key in textures.keys():
+		var value = textures[key]
+		if not value is Dictionary:
+			continue
+		var path := String(key).to_lower()
+		var penalty := 0
+		if "spec" in path:
+			penalty += 100
+		if "_n." in path or "normal" in path or "_cn." in path:
+			penalty += 90
+		if "weapon" in path:
+			penalty += 60
+		if "base" in path:
+			penalty += 5
+		candidates.append({"penalty": penalty, "value": value})
+
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["penalty"]) < int(b["penalty"])
+	)
+	return candidates[0]["value"] if not candidates.is_empty() else {}
+
+
+static func _texture_from_descriptor(descriptor: Dictionary) -> Texture2D:
+	if descriptor.is_empty():
+		return null
+	var url := String(descriptor.get("godotUrl", descriptor.get("url", "")))
+	if url.is_empty():
+		return null
+	var path := local_url_to_resource(url)
+	if not ResourceLoader.exists(path):
+		return null
+	var resource = load(path)
+	return resource as Texture2D if resource is Texture2D else null
+
+
+static func _apply_character_texture(root: Node3D, role: String) -> void:
+	var texture := _texture_from_descriptor(_character_texture_descriptor(role))
+	if texture == null:
+		return
+
+	var pending: Array[Node] = [root]
+	while not pending.is_empty():
+		var node := pending.pop_back()
+		for child in node.get_children():
+			pending.append(child)
+		if not node is MeshInstance3D:
+			continue
+
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface_index in range(mesh_instance.mesh.get_surface_count()):
+			var original := mesh_instance.get_active_material(surface_index)
+			var material: StandardMaterial3D
+			if original is StandardMaterial3D:
+				material = (original as StandardMaterial3D).duplicate()
+			else:
+				material = StandardMaterial3D.new()
+			material.albedo_texture = texture
+			material.albedo_color = Color.WHITE
+			mesh_instance.set_surface_override_material(surface_index, material)
