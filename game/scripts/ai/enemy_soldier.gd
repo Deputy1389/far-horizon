@@ -33,6 +33,7 @@ func configure(player_ref: Node3D, manager: SquadManager, id: String, spawn_posi
 	global_position = spawn_position
 	rng.seed = hash("%s:%s" % [id, str(spawn_position)])
 	squad_role = squad_manager.register_member(self, squad_id)
+	_choose_patrol_target()
 
 func _ready() -> void:
 	add_to_group("enemy")
