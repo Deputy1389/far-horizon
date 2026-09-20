@@ -127,6 +127,7 @@ func _spawn_enemies() -> void:
 		var spawn := positions[index]
 		spawn.y += 0.15
 		soldier.configure(player, squads, squad_id, spawn)
+		soldier.killed.connect(_on_imperial_soldier_killed)
 
 func _spawn_capture_point() -> void:
 	capture_point = CapturePoint.new()
@@ -190,6 +191,9 @@ func _bind_mouse(action: StringName, button: MouseButton) -> void:
 	var event := InputEventMouseButton.new()
 	event.button_index = button
 	InputMap.action_add_event(action, event)
+
+func _on_imperial_soldier_killed(_soldier: EnemySoldier) -> void:
+	strategy.apply_casualties("mos_eisley", "imperial", 3.0)
 
 func _on_capture_completed(_faction: String) -> void:
 	if hud != null:
