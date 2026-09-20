@@ -11,6 +11,7 @@ var status_label := Label.new()
 var strategy_label := Label.new()
 var event_label := Label.new()
 var objective_label := Label.new()
+var interaction_label := Label.new()
 var crosshair := Label.new()
 var damage_overlay := ColorRect.new()
 
@@ -67,6 +68,13 @@ func _ready() -> void:
 	objective_label.add_theme_font_size_override("font_size", 17)
 	add_child(objective_label)
 
+	interaction_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	interaction_label.position = Vector2(-150, -92)
+	interaction_label.size = Vector2(300, 30)
+	interaction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	interaction_label.add_theme_font_size_override("font_size", 18)
+	add_child(interaction_label)
+
 	var controls := Label.new()
 	controls.text = "WASD move   Shift sprint   Space jump/mantle   C crouch   Z prone   RMB ADS   LMB fire   1/2 weapons   E interact"
 	controls.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -86,9 +94,13 @@ func _process(delta: float) -> void:
 		return
 
 	var lat_lon := floating_origin.latitude_longitude_degrees()
-	status_label.text = "STANCE %s   SPEED %.1f m/s   LAT %.4f  LON %.4f" % [
+	var display_velocity := player.velocity
+	if player.active_vehicle is CharacterBody3D:
+		display_velocity = (player.active_vehicle as CharacterBody3D).velocity
+	status_label.text = "STANCE %s   SPEED %.1f m/s   FPS %d   LAT %.4f  LON %.4f" % [
 		player.stance.to_upper(),
-		Vector2(player.velocity.x, player.velocity.z).length(),
+		Vector2(display_velocity.x, display_velocity.z).length(),
+		Engine.get_frames_per_second(),
 		lat_lon.x,
 		lat_lon.y,
 	]
@@ -96,6 +108,7 @@ func _process(delta: float) -> void:
 		strategy_label.text = "\n".join(strategy.summary_lines())
 
 	_update_objective()
+	_update_interaction_prompt()
 	event_timer = maxf(0.0, event_timer - delta)
 	hit_marker_timer = maxf(0.0, hit_marker_timer - delta)
 	damage_flash_timer = maxf(0.0, damage_flash_timer - delta)
@@ -135,6 +148,23 @@ func _update_objective() -> void:
 		]
 	else:
 		objective_label.text = "IMPERIAL GARRISON  %.0f m\nFollow the road into the city." % distance
+
+func _update_interaction_prompt() -> void:
+	var nearest_distance := 4.0
+	var prompt := ""
+	for candidate in get_tree().get_nodes_in_group("interactable"):
+		if not candidate is Node3D:
+			continue
+		var node := candidate as Node3D
+		var distance := player.global_position.distance_to(node.global_position)
+		if distance > nearest_distance or not node.has_method("interaction_text"):
+			continue
+		var candidate_prompt := String(node.interaction_text())
+		if candidate_prompt.is_empty():
+			continue
+		nearest_distance = distance
+		prompt = candidate_prompt
+	interaction_label.text = prompt
 
 func set_capture_progress(ratio: float, contested: bool) -> void:
 	capture_ratio = clampf(ratio, 0.0, 1.0)
