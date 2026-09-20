@@ -3,6 +3,7 @@ import {
   advanceBolt,
   createBoltFlight,
   createLocomotionState,
+  deriveWeaponPose,
   facingRotation,
   updateLocomotion,
 } from '../src/motion.mjs';
@@ -36,5 +37,12 @@ assert.equal(progress.done, false, 'a bolt is still in flight halfway through');
 progress = advanceBolt(flight, 0.25);
 approximately(progress.position[0], 10);
 assert.equal(progress.done, true, 'a bolt completes at its target');
+
+const weaponPose = deriveWeaponPose([4, 2, 1], [1, 3, 1]);
+assert.deepEqual(weaponPose.origin, [4, 2, 1], 'the weapon grip follows the right wrist');
+approximately(weaponPose.direction[0], -3 / Math.sqrt(10));
+approximately(weaponPose.direction[1], 1 / Math.sqrt(10));
+approximately(weaponPose.direction[2], 0);
+assert.ok(weaponPose.distance > 0, 'a two-handed weapon has a valid hand span');
 
 console.log('motion tests passed');

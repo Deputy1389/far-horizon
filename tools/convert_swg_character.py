@@ -1095,6 +1095,29 @@ def choose_character_skeletal_mesh(entries: Iterable[AssetEntry]) -> AssetEntry 
     )
 
 
+def character_animation_specs() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    return (
+        (
+            "idle",
+            (
+                "appearance/animation/all_b_cbt_rifle_standing_ready_idle_front_left.ans",
+                "appearance/animation/all_b_ad_stormtrooper1.ans",
+            ),
+        ),
+        (
+            "walk",
+            (
+                "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
+                "appearance/animation/all_b_loc_walk_male.ans",
+            ),
+        ),
+        (
+            "run",
+            ("appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",),
+        ),
+    )
+
+
 def convert_from_inventory(
     entries: Iterable[AssetEntry],
     output_gltf: Path,
@@ -1122,19 +1145,10 @@ def convert_from_inventory(
         raise FileNotFoundError(f"mesh references missing skeleton {mesh.skeleton_filename!r}")
     skeleton = parse_skeleton(decode_tre_entry(skeleton_entry.archive, skeleton_entry.metadata))
 
-    animation_specs = (
-        ("idle", ("appearance/animation/all_b_cbt_rifle_standing_ready_idle_front_left.ans", "appearance/animation/all_b_ad_stormtrooper1.ans")),
-        # This is the clean full-body gait clip. The rifle-ready clip remains
-        # a real source in the client and is preferable for a later combat
-        # stance, but the locomotion clip gives the playable avatar a natural
-        # walk while the weapon presentation stays readable.
-        ("walk", ("appearance/animation/all_b_loc_walk_male.ans", "appearance/animation/all_b_cbt_rifle_walk_ready.ans")),
-        ("run", ("appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",)),
-    )
     animations: list[AnimationClipData] = []
     selected_animation_paths: list[str] = []
     animation_sources: list[dict[str, str | int]] = []
-    for animation_name, preferred_paths in animation_specs:
+    for animation_name, preferred_paths in character_animation_specs():
         animation_entry = _ranked_entry(entries, preferred_paths, ".ans", ("all_b",))
         if animation_entry is None:
             print(f"CHARACTER animation miss {animation_name}: no ranked .ans candidate")

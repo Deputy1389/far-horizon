@@ -4,6 +4,20 @@ export function facingRotation(yaw, usesImportedPlusZForward) {
   return yaw + (usesImportedPlusZForward ? 0 : Math.PI);
 }
 
+export function deriveWeaponPose(rightWrist, leftWrist) {
+  const origin = rightWrist.slice(0, 3).map((value) => Number(value) || 0);
+  const target = leftWrist.slice(0, 3).map((value) => Number(value) || 0);
+  const delta = target.map((value, index) => value - origin[index]);
+  const distance = Math.hypot(delta[0], delta[1], delta[2]);
+  return {
+    origin,
+    direction: distance > 1e-6
+      ? delta.map((value) => value / distance)
+      : [0, 0, -1],
+    distance,
+  };
+}
+
 export function createLocomotionState() {
   return {
     phase: 0,

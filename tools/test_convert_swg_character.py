@@ -8,6 +8,7 @@ from convert_swg_character import (
     AnimationBoneChannel,
     AnimationClipData,
     Quaternion,
+    character_animation_specs,
     choose_character_skeletal_mesh,
     write_skinned_gltf,
     parse_skeletal_mesh,
@@ -127,6 +128,13 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
         )
 
         self.assertEqual(choose_character_skeletal_mesh([older, newer]), newer)
+
+    def test_prefers_the_rifle_ready_walk_clip_for_the_two_hand_weapon_pose(self) -> None:
+        specs = dict(character_animation_specs())
+        self.assertEqual(
+            specs["walk"][0],
+            "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
+        )
 
 
 if __name__ == "__main__":

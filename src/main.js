@@ -8,6 +8,7 @@ import {
   advanceBolt,
   createBoltFlight,
   createLocomotionState,
+  deriveWeaponPose,
   facingRotation,
   triggerLocomotionRecoil,
   updateLocomotion,
@@ -256,13 +257,26 @@ function updateStormtrooperAnimation(object,dt,moving,sprinting,targetSpeed=0){
   if(!object?.userData?.animationMixer)return;
   playStormtrooperAnimation(object,moving?(sprinting?'run':'walk'):'idle',moving?targetSpeed:0);
   object.userData.animationMixer.update(Math.max(0,dt));
+  updateStormtrooperBlasterPose(object);
   if(typeof window!=='undefined'&&object===localStormtrooperAvatar){
+    const worldPosition=target=>target?.getWorldPosition(new THREE.Vector3()).toArray().map(value=>Number(value.toFixed(3)))||null;
+    const wrist=object.getObjectByName('rWrist');
+    const forearm=object.getObjectByName('rForeArm');
+    const leftWrist=object.getObjectByName('lWrist');
+    const leftForearm=object.getObjectByName('lForeArm');
+    const gun=object.userData.blasterMuzzle?.parent;
     window.__farHorizonCharacterStatus={
       rigged:localStormtrooperRigged,
       clips:localStormtrooperAnimations.map(clip=>clip.name),
       active:object.userData.activeAnimation,
       mixerTime:object.userData.activeAction?.time||0,
       blasterAttachedTo:object.userData.blasterAttachedTo||'root',
+      wristWorld:worldPosition(wrist),
+      forearmWorld:worldPosition(forearm),
+      leftWristWorld:worldPosition(leftWrist),
+      leftForearmWorld:worldPosition(leftForearm),
+      gunWorld:worldPosition(gun),
+      muzzleWorld:worldPosition(object.userData.blasterMuzzle),
     };
   }
 }
@@ -271,8 +285,10 @@ function addStormtrooperBlaster(object){
   // The extracted MGN is the weighted armor body and does not contain the
   // equipped weapon. Keep the weapon as a small, deterministic presentation
   // attachment until the SWG appearance/weapon hardpoint chain is converted.
-  const animatedMount=object.getObjectByName('rWrist');
-  const mount=animatedMount||object;
+  const gripBone=object.getObjectByName('rWrist');
+  const aimBone=object.getObjectByName('lWrist');
+  const twoHandPose=Boolean(gripBone&&aimBone);
+  const mount=object;
   const gun=new THREE.Group();
   const finish=materials.stormtrooperMaterial('weapon');
   const receiver=new THREE.Mesh(new THREE.BoxGeometry(.22,.2,.72),finish);
@@ -283,14 +299,12 @@ function addStormtrooperBlaster(object){
   barrel.rotation.x=Math.PI/2; barrel.position.set(0,.02,-.92); gun.add(barrel);
   const muzzle=new THREE.Object3D();
   muzzle.position.set(0,.02,-1.28); gun.add(muzzle);
-  if(animatedMount){
-    // This is the inverse bind-space placement of the visible rifle pose
-    // relative to rWrist. The attachment therefore keeps following the real
-    // animated hand instead of floating at the character root.
-    // Keep the grip at the wrist origin; a large bind-space chest offset
-    // would swing away from the hand as the wrist rotates through the clips.
-    gun.position.set(0,.015,0);
-    gun.quaternion.set(.701,-.010,.713,-.009);
+  if(twoHandPose){
+    // The two wrists are animated independently. Store the rifle at the
+    // avatar root and solve its pose from both hands after every mixer tick;
+    // parenting it to one wrist makes its barrel inherit the wrong roll.
+    gun.position.set(0,0,0);
+    gun.quaternion.identity();
   }else{
     // Older or partial conversions can lack the wrist node; retain a readable
     // root-mounted presentation attachment for that fallback.
@@ -301,7 +315,28 @@ function addStormtrooperBlaster(object){
   gun.traverse(child=>{if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}});
   mount.add(gun);
   object.userData.blasterMuzzle=muzzle;
-  object.userData.blasterAttachedTo=animatedMount?.name||'root';
+  object.userData.blasterGun=gun;
+  object.userData.blasterGripBone=gripBone;
+  object.userData.blasterAimBone=aimBone;
+  object.userData.blasterPoseMode=twoHandPose?'two-hand':'root';
+  object.userData.blasterAttachedTo=twoHandPose?'rWrist+lWrist':'root';
+}
+function updateStormtrooperBlasterPose(object){
+  const gun=object?.userData?.blasterGun;
+  const gripBone=object?.userData?.blasterGripBone;
+  const aimBone=object?.userData?.blasterAimBone;
+  if(!gun||!gripBone||!aimBone)return;
+  const gripWorld=gripBone.getWorldPosition(new THREE.Vector3());
+  const aimWorld=aimBone.getWorldPosition(new THREE.Vector3());
+  const pose=deriveWeaponPose(gripWorld.toArray(),aimWorld.toArray());
+  object.worldToLocal(gun.position.copy(gripWorld));
+  const worldDirection=new THREE.Vector3().fromArray(pose.direction);
+  const worldQuaternion=new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0,0,-1),
+    worldDirection,
+  );
+  const objectWorldQuaternion=object.getWorldQuaternion(new THREE.Quaternion());
+  gun.quaternion.copy(objectWorldQuaternion.invert().multiply(worldQuaternion));
 }
 function localStormtrooperClone(scale=4.6){
   if(!localStormtrooperPrototype)return null;
