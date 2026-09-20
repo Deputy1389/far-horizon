@@ -35,6 +35,7 @@ var mantle_duration := 0.2
 var mantle_start := Vector3.ZERO
 var mantle_end := Vector3.ZERO
 var active_vehicle: Node3D
+var vehicle_look_yaw := 0.0
 
 var stand_collision := CollisionShape3D.new()
 var crouch_collision := CollisionShape3D.new()
@@ -86,12 +87,17 @@ func _build_camera() -> void:
 	add_child(head)
 	camera.fov = 80.0
 	camera.near = 0.05
+	camera.current = true
 	head.add_child(camera)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var mouse := event as InputEventMouseMotion
-		rotate_y(-mouse.relative.x * mouse_sensitivity)
+		if active_vehicle != null and is_instance_valid(active_vehicle):
+			vehicle_look_yaw = clamp(vehicle_look_yaw - mouse.relative.x * mouse_sensitivity, deg_to_rad(-82.0), deg_to_rad(82.0))
+			head.rotation.y = vehicle_look_yaw
+		else:
+			rotate_y(-mouse.relative.x * mouse_sensitivity)
 		pitch = clamp(pitch - mouse.relative.y * mouse_sensitivity, deg_to_rad(-88.0), deg_to_rad(88.0))
 		head.rotation.x = pitch
 	elif event.is_action_pressed("pause_mouse"):
@@ -144,13 +150,13 @@ func _physics_process(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, target_velocity.z, acceleration * delta)
 
 	if Input.is_action_just_pressed("jump"):
+		if _try_begin_mantle():
+			return
 		if grounded or coyote_time > 0.0:
 			if jump_cooldown <= 0.0 and stance != PRONE:
 				velocity.y = jump_velocity
 				jump_cooldown = 0.2
 				coyote_time = 0.0
-		elif _try_begin_mantle():
-			return
 
 	_try_step(delta)
 	move_and_slide()
@@ -273,6 +279,8 @@ func _try_interact() -> void:
 
 func enter_vehicle(vehicle: Node3D) -> void:
 	active_vehicle = vehicle
+	vehicle_look_yaw = 0.0
+	head.rotation.y = 0.0
 	stand_collision.disabled = true
 	crouch_collision.disabled = true
 	prone_collision.disabled = true
@@ -282,6 +290,8 @@ func enter_vehicle(vehicle: Node3D) -> void:
 
 func leave_vehicle(exit_position: Vector3) -> void:
 	active_vehicle = null
+	vehicle_look_yaw = 0.0
+	head.rotation.y = 0.0
 	global_position = exit_position
 	collision_layer = 1
 	_request_stance(STAND)
@@ -293,6 +303,7 @@ func _update_vehicle_mode() -> void:
 		var seat: Transform3D = active_vehicle.driver_transform()
 		global_position = seat.origin
 		rotation.y = active_vehicle.global_rotation.y
+		head.position.y = lerpf(head.position.y, 0.12, 0.35)
 
 func add_recoil(pitch_degrees: float, yaw_degrees: float) -> void:
 	pitch = clamp(pitch - deg_to_rad(pitch_degrees), deg_to_rad(-88.0), deg_to_rad(88.0))
