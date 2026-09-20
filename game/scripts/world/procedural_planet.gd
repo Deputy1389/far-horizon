@@ -105,7 +105,7 @@ func _build_chunk(key: Vector2i) -> Node3D:
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var vertex_grid: Array[Vector3] = []
 	var uv_grid: Array[Vector2] = []
-	var steps := max(chunk_resolution - 1, 1)
+	var steps: int = maxi(chunk_resolution - 1, 1)
 	var start_x := float(key.x) * chunk_size
 	var start_z := float(key.y) * chunk_size
 
@@ -179,7 +179,7 @@ func _height_for_ecef(ecef: PackedFloat64Array) -> float:
 		float(direction[1] * 4200.0),
 		float(direction[2] * 4200.0)
 	)
-	var dune := abs(dune_noise.get_noise_3d(
+	var dune: float = absf(dune_noise.get_noise_3d(
 		float(direction[0] * 13000.0),
 		float(direction[1] * 13000.0),
 		float(direction[2] * 13000.0)
