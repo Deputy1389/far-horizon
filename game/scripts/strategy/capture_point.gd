@@ -2,6 +2,7 @@ class_name CapturePoint
 extends Area3D
 
 signal captured(faction: String)
+signal progress_changed(ratio: float, contested: bool)
 
 @export var node_id := "mos_eisley"
 @export var capture_seconds := 7.0
@@ -10,6 +11,8 @@ signal captured(faction: String)
 var strategy: StrategicSim
 var progress := 0.0
 var completed := false
+var last_ratio := -1.0
+var last_contested := false
 
 func configure(sim: StrategicSim, strategic_node_id: String) -> void:
 	strategy = sim
@@ -42,25 +45,44 @@ func _ready() -> void:
 	marker.material_override = material
 	add_child(marker)
 
+	_emit_progress(false, true)
+
 func _physics_process(delta: float) -> void:
 	if completed or strategy == null:
 		return
+
 	var player_inside := false
 	for body in get_overlapping_bodies():
 		if body.is_in_group("player"):
 			player_inside = true
 			break
+
 	if not player_inside:
-		progress = max(0.0, progress - delta * 0.5)
+		progress = maxf(0.0, progress - delta * 0.5)
+		_emit_progress(false)
 		return
 
+	var contested := false
 	for enemy in get_tree().get_nodes_in_group("enemy"):
 		if enemy is Node3D and global_position.distance_to((enemy as Node3D).global_position) < radius * 3.2:
-			progress = max(0.0, progress - delta * 0.35)
-			return
+			contested = true
+			break
 
-	progress += delta
+	if contested:
+		progress = maxf(0.0, progress - delta * 0.35)
+		_emit_progress(true)
+		return
+
+	progress = minf(capture_seconds, progress + delta)
+	_emit_progress(false)
 	if progress >= capture_seconds:
 		completed = true
 		strategy.apply_local_result(node_id, "rebel", 145.0)
 		captured.emit("rebel")
+
+func _emit_progress(contested: bool, force: bool = false) -> void:
+	var ratio := clampf(progress / maxf(capture_seconds, 0.001), 0.0, 1.0)
+	if force or absf(ratio - last_ratio) >= 0.01 or contested != last_contested:
+		last_ratio = ratio
+		last_contested = contested
+		progress_changed.emit(ratio, contested)
