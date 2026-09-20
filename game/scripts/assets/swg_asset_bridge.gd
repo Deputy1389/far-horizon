@@ -45,3 +45,39 @@ static func instantiate_stormtrooper() -> Node3D:
 	var ground_offset := float(descriptor.get("groundOffset", 0.0))
 	visual.position.y = -ground_offset * scale_factor
 	return visual
+
+static func texture_for_role(role: String) -> Texture2D:
+	var data := manifest()
+	var assets = data.get("assets", {})
+	if not assets is Dictionary:
+		return null
+	var descriptor = assets.get(role)
+	var url := ""
+	if descriptor is String:
+		url = descriptor
+	elif descriptor is Dictionary:
+		url = String(descriptor.get("url", ""))
+	if url.is_empty():
+		return null
+	var path := local_url_to_resource(url)
+	if not ResourceLoader.exists(path):
+		return null
+	var resource = load(path)
+	return resource as Texture2D if resource is Texture2D else null
+
+static func instantiate_mesh_proof() -> Node3D:
+	var data := manifest()
+	var descriptor = data.get("meshProof", {})
+	if not descriptor is Dictionary:
+		return null
+	var url := String(descriptor.get("url", ""))
+	if url.is_empty():
+		return null
+	var path := local_url_to_resource(url)
+	if not ResourceLoader.exists(path):
+		return null
+	var resource = load(path)
+	if not resource is PackedScene:
+		return null
+	var scene := (resource as PackedScene).instantiate()
+	return scene as Node3D if scene is Node3D else null
