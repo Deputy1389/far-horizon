@@ -19,7 +19,7 @@ jobs:
 
       - name: Import Godot project
         run: |
-          godot --headless --path . --editor --quit-after 2
+          godot --headless --rendering-method gl_compatibility --path . --editor --quit-after 2
 
       - name: Parse every foundation script
         shell: bash
@@ -27,16 +27,16 @@ jobs:
           set -euo pipefail
           while IFS= read -r script; do
             echo "Checking $script"
-            godot --headless --path . --check-only --script "res://$script"
+            godot --headless --rendering-method gl_compatibility --path . --check-only --script "res://$script"
           done < <(find game/scripts -type f -name '*.gd' | sort)
 
       - name: Foundation architecture contracts
         run: |
-          godot --headless --path . --script res://game/tests/foundation_contracts.gd
+          godot --headless --rendering-method gl_compatibility --path . --script res://game/tests/foundation_contracts.gd
 
       - name: Boot the playable foundation
         run: |
-          godot --headless --path . --quit-after 180
+          godot --headless --rendering-method gl_compatibility --path . --quit-after 180
 
   existing-pipeline-tests:
     runs-on: ubuntu-latest
