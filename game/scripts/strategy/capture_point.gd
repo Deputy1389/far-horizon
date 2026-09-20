@@ -16,6 +16,7 @@ func configure(sim: StrategicSim, strategic_node_id: String) -> void:
 	node_id = strategic_node_id
 
 func _ready() -> void:
+	add_to_group("planet_anchor")
 	collision_layer = 0
 	collision_mask = 1
 	var shape_node := CollisionShape3D.new()
