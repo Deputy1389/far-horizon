@@ -48,6 +48,12 @@ func _test_strategy_state() -> void:
 	var after := sim.damage_force(force_id, 7.0)
 	assert(absf(after - (before - 7.0)) < 0.001)
 
+	var city_before: Dictionary = sim.nodes["mos_eisley"]
+	var imperial_before := float(city_before["imperial"])
+	sim.apply_casualties("mos_eisley", "imperial", 3.0)
+	var city_after_casualty: Dictionary = sim.nodes["mos_eisley"]
+	assert(absf(float(city_after_casualty["imperial"]) - (imperial_before - 3.0)) < 0.001)
+
 	sim.apply_local_result("mos_eisley", "rebel", 145.0)
 	var city: Dictionary = sim.nodes["mos_eisley"]
 	assert(float(city["rebel"]) > float(city["imperial"]))
