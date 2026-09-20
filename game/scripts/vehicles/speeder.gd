@@ -55,6 +55,11 @@ func _build_body() -> void:
 	seat.position = Vector3(0.0, 1.05, 0.15)
 	add_child(seat)
 
+func interaction_text() -> String:
+	if driver == null:
+		return "E  ENTER SPEEDER"
+	return "E  EXIT SPEEDER" if driver.is_in_group("player") else ""
+
 func interact(player: FPSController) -> void:
 	if driver == null:
 		driver = player
