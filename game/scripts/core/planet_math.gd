@@ -90,3 +90,12 @@ static func ecef_to_lat_lon(value: PackedFloat64Array) -> Vector2:
 	var latitude := asin(clamp(value[1] / r, -1.0, 1.0))
 	var longitude := atan2(value[2], value[0])
 	return Vector2(latitude, longitude)
+
+static func interpolate_on_sphere(a: PackedFloat64Array, b: PackedFloat64Array, t: float, radius: float) -> PackedFloat64Array:
+	var clamped := clamp(t, 0.0, 1.0)
+	var blended := PackedFloat64Array([
+		lerpf(a[0], b[0], clamped),
+		lerpf(a[1], b[1], clamped),
+		lerpf(a[2], b[2], clamped),
+	])
+	return project_to_radius(blended, radius)
