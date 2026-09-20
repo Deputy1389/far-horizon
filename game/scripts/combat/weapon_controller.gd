@@ -19,6 +19,7 @@ var muzzle := Marker3D.new()
 var weapon_mesh := MeshInstance3D.new()
 var muzzle_flash_mesh := MeshInstance3D.new()
 var muzzle_flash_light := OmniLight3D.new()
+var fire_audio := AudioStreamPlayer.new()
 var muzzle_flash_time := 0.0
 var viewmodel_kick := 0.0
 var base_fov := 80.0
@@ -31,6 +32,8 @@ func configure(view_camera: Camera3D, body: CharacterBody3D) -> void:
 	camera.add_child(viewmodel)
 	viewmodel.add_child(weapon_mesh)
 	viewmodel.add_child(muzzle)
+	viewmodel.add_child(fire_audio)
+	fire_audio.volume_db = -7.0
 	_build_muzzle_flash()
 	_rebuild_viewmodel()
 	camera.fov = base_fov
@@ -137,6 +140,7 @@ func _rebuild_viewmodel() -> void:
 	viewmodel.position = weapon.viewmodel_offset
 	viewmodel.scale = weapon.viewmodel_scale
 	muzzle.position = Vector3(0.0, 0.0, -mesh.size.z * 0.58)
+	fire_audio.stream = SwgAssetBridge.audio_for_role("blasterPistol" if current_index == 0 else "blasterRifle")
 
 func _fire() -> void:
 	var weapon := current_weapon()
@@ -155,6 +159,9 @@ func _fire() -> void:
 	muzzle_flash_time = 0.045
 	muzzle_flash_mesh.visible = true
 	muzzle_flash_light.visible = true
+	if fire_audio.stream != null:
+		fire_audio.stop()
+		fire_audio.play()
 
 	if owner_body != null and owner_body.has_method("add_recoil"):
 		owner_body.add_recoil(
