@@ -42,6 +42,8 @@ static func instantiate_stormtrooper() -> Node3D:
 	var visual := scene as Node3D
 	var scale_factor := 6.0
 	visual.scale = Vector3.ONE * scale_factor
+	# The converted SWG character faces +Z; Godot gameplay convention is -Z forward.
+	visual.rotation.y = PI
 	var ground_offset := float(descriptor.get("groundOffset", 0.0))
 	visual.position.y = -ground_offset * scale_factor
 	return visual
