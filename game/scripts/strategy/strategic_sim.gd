@@ -126,6 +126,14 @@ func apply_local_result(node_id: String, faction: String, impact: float) -> void
 	event_logged.emit("Local action changed the balance at %s." % String(node["name"]))
 	_evaluate_control(node_id)
 
+func apply_casualties(node_id: String, faction: String, amount: float) -> void:
+	if not nodes.has(node_id) or faction not in ["imperial", "rebel"]:
+		return
+	var node: Dictionary = nodes[node_id]
+	node[faction] = maxf(0.0, float(node.get(faction, 0.0)) - maxf(amount, 0.0))
+	nodes[node_id] = node
+	_evaluate_control(node_id)
+
 func damage_force(force_id: String, amount: float) -> float:
 	for force in forces:
 		if String(force["id"]) != force_id:
