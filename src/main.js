@@ -221,10 +221,10 @@ async function addLocalSwgCharacter(){
   if(!materials.stormtrooperReady)return;
   try{
     const response=await fetch('./assets/local-swg/manifest.json',{cache:'no-store'});
-    if(!response.ok)return;
+    if(!response.ok){ui.character.textContent='CAPSULE FALLBACK';return;}
     const manifest=await response.json();
     const character=manifest.characters?.stormtrooper;
-    if(!character?.url)return;
+    if(!character?.url){ui.character.textContent='CAPSULE FALLBACK';return;}
     const loader=new GLTFLoader();
     const gltf=await new Promise((resolve,reject)=>loader.load(character.url,resolve,undefined,reject));
     const object=gltf.scene;
@@ -246,8 +246,10 @@ async function addLocalSwgCharacter(){
     const playerAvatar=localStormtrooperClone(6.4);
     playerAvatar.name='local-swg-stormtrooper-player';
     player.add(playerAvatar);
+    ui.character.textContent='STORMTROOPER';
     console.info(`Loaded local SWG character ${character.virtualPath} from ${character.archive}`);
   }catch(error){
+    ui.character.textContent='CAPSULE FALLBACK';
     console.warn('Local SWG Stormtrooper could not be loaded; keeping the capsule fallback.',error);
   }
 }
