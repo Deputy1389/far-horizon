@@ -3,6 +3,14 @@ import { GLTFLoader } from 'https://esm.sh/three@0.180.0/examples/jsm/loaders/GL
 import { CharacterState, RESOURCE_CATALOG } from './systems.js';
 import { createSystemsUI } from './ui.js';
 import { createMaterialLibrary } from './materials.js';
+import {
+  advanceBolt,
+  createBoltFlight,
+  createLocomotionState,
+  facingRotation,
+  triggerLocomotionRecoil,
+  updateLocomotion,
+} from './motion.mjs';
 
 const character = new CharacterState();
 
@@ -206,15 +214,28 @@ async function addLocalSwgMesh(){
 
 let localStormtrooperPrototype=null;
 let localStormtrooperGroundOffset=0;
+let localStormtrooperAvatar=null;
 function localStormtrooperClone(scale=4.6){
   if(!localStormtrooperPrototype)return null;
   const clone=localStormtrooperPrototype.clone(true);
   clone.scale.setScalar(scale);
-  clone.position.y=-(localStormtrooperGroundOffset*scale);
+  clone.userData.groundCorrection=-(localStormtrooperGroundOffset*scale);
+  clone.userData.motion=createLocomotionState();
+  clone.position.y=clone.userData.groundCorrection;
   clone.traverse(child=>{
     if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}
   });
   return clone;
+}
+
+function applyStormtrooperMotion(object,dt,inputMagnitude,speed,sprinting,baseY=0,allowSway=false){
+  const state=object.userData.motion;
+  if(!state)return;
+  updateLocomotion(state,dt,inputMagnitude,speed,sprinting);
+  object.position.y=baseY+(object.userData.groundCorrection||0)+state.bob;
+  if(allowSway)object.position.x=state.sway;
+  object.rotation.x=state.lean-state.recoil*.04;
+  object.rotation.z=state.roll;
 }
 
 async function addLocalSwgCharacter(){
@@ -246,6 +267,8 @@ async function addLocalSwgCharacter(){
     const playerAvatar=localStormtrooperClone(6.4);
     playerAvatar.name='local-swg-stormtrooper-player';
     player.add(playerAvatar);
+    localStormtrooperAvatar=playerAvatar;
+    player.rotation.y=facingRotation(yaw,true);
     ui.character.textContent='STORMTROOPER';
     console.info(`Loaded local SWG character ${character.virtualPath} from ${character.archive}`);
   }catch(error){
@@ -279,11 +302,12 @@ function buildCrowd(){
     const a=rrange(0,Math.PI*2),rad=rrange(150,760);
     const x=Math.cos(a)*rad,z=Math.sin(a)*rad;
     const agent=localStormtrooperPrototype?localStormtrooperClone(4.6):new THREE.Mesh(geo,mat);
-    const groundOffset=localStormtrooperPrototype?0:1.8;
+    const groundOffset=localStormtrooperPrototype?agent.userData.groundCorrection:1.8;
     agent.position.set(x,terrainHeight(x,z)+groundOffset,z);
     agent.castShadow=true;
     agent.receiveShadow=true;
     agent.userData.groundOffset=groundOffset;
+    agent.userData.forwardOffset=localStormtrooperPrototype?0:Math.PI;
     agent.userData.dir=rrange(0,Math.PI*2);
     agent.userData.turn=rrange(2,7);
     scene.add(agent);crowd.push(agent);
@@ -297,21 +321,25 @@ function updateCrowd(dt){
     const nz=a.position.z+Math.cos(a.userData.dir)*dt*2.2;
     const r=Math.hypot(nx,nz);
     if(r>820||r<120||collides(nx,nz)){a.userData.dir+=Math.PI*.7;continue;}
-    a.position.x=nx;a.position.z=nz;a.position.y=terrainHeight(nx,nz)+a.userData.groundOffset;a.rotation.y=a.userData.dir+Math.PI;
+    a.position.x=nx;a.position.z=nz;
+    const ground=terrainHeight(nx,nz);
+    if(a.userData.motion)applyStormtrooperMotion(a,dt,1,2.2,false,ground);
+    else a.position.y=ground+a.userData.groundOffset;
+    a.rotation.y=a.userData.dir+a.userData.forwardOffset;
   }
 }
 
+let yaw=0, pitch=-0.16;
 const player = new THREE.Group();
 const bodyMat=new THREE.MeshStandardMaterial({color:0x2c3131,roughness:.8});
 const torso=new THREE.Mesh(new THREE.CapsuleGeometry(2.2,5.8,4,8),bodyMat); torso.position.y=5.2; torso.castShadow=true; player.add(torso);
 const head=new THREE.Mesh(new THREE.SphereGeometry(1.7,12,10),new THREE.MeshStandardMaterial({color:0x8b6956,roughness:1})); head.position.y=10.2; head.castShadow=true; player.add(head);
 const rifle=new THREE.Mesh(new THREE.BoxGeometry(.7,.7,6),new THREE.MeshStandardMaterial({color:0x24272a,metalness:.55,roughness:.45})); rifle.position.set(2.4,6.5,-1.6); rifle.rotation.x=.2; player.add(rifle);
-// Three.js meshes conventionally face local -Z; our camera-forward basis below is +Z at yaw 0.
-// Start the avatar aligned with the direction the camera/player will consider forward.
-player.rotation.y = Math.PI;
+// The procedural fallback faces -Z, while the imported SWG character faces +Z.
+// Start the fallback aligned with the direction the camera/player considers forward.
+player.rotation.y = facingRotation(yaw,false);
 scene.add(player);
 
-let yaw=0, pitch=-0.16;
 const keys={};
 let pointerLocked=false;
 let toastTimer=0;
@@ -399,16 +427,61 @@ function spawnDrones(){
 }
 
 const raycaster=new THREE.Raycaster();
+const blasterBolts=[];
 function addShotLine(start,end,color=0xffd6a0,duration=70){
   const geo=new THREE.BufferGeometry().setFromPoints([start,end]);
   const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color,transparent:true,opacity:.9}));
   scene.add(line);
   setTimeout(()=>{scene.remove(line);geo.dispose();line.material.dispose()},duration);
 }
+function blasterMuzzleWorld(){
+  if(localStormtrooperAvatar){
+    // The extracted rifle is part of the SWG character mesh. These local
+    // coordinates sit just beyond its forward barrel bounds.
+    return localStormtrooperAvatar.localToWorld(new THREE.Vector3(-.29,1.27,.31));
+  }
+  return rifle.localToWorld(new THREE.Vector3(0,0,-3.05));
+}
+function reportBlasterBoltCount(){
+  if(typeof window!=='undefined')window.__farHorizonBlasterBolts=blasterBolts.length;
+}
+function spawnBlasterBolt(start,end){
+  const flight=createBoltFlight(start.toArray(),end.toArray(),360);
+  const bolt=new THREE.Mesh(
+    new THREE.CylinderGeometry(.14,.14,2.4,8),
+    new THREE.MeshBasicMaterial({color:0xff3b24,toneMapped:false}),
+  );
+  bolt.position.copy(start);
+  bolt.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0,1,0),
+    new THREE.Vector3().fromArray(flight.direction),
+  );
+  bolt.userData.flight=flight;
+  const glow=new THREE.PointLight(0xff3525,3.5,7);
+  bolt.add(glow);
+  scene.add(bolt);
+  blasterBolts.push(bolt);
+  reportBlasterBoltCount();
+}
+function updateBlasterBolts(dt){
+  for(let i=blasterBolts.length-1;i>=0;i--){
+    const bolt=blasterBolts[i];
+    const result=advanceBolt(bolt.userData.flight,dt);
+    bolt.position.fromArray(result.position);
+    if(result.done){
+      scene.remove(bolt);
+      bolt.geometry.dispose();
+      bolt.material.dispose();
+      blasterBolts.splice(i,1);
+    }
+  }
+  reportBlasterBoltCount();
+}
 function fire(){
   const now=performance.now()/1000;
   if(now-lastShot<character.fireCooldown())return;
   lastShot=now;
+  const muzzle=blasterMuzzleWorld();
   raycaster.setFromCamera(new THREE.Vector2(0,0),camera);
   const targets=enemies.filter(e=>e.userData.alive).flatMap(e=>e.children);
   const hits=raycaster.intersectObjects(targets,false);
@@ -432,7 +505,9 @@ function fire(){
       } else toast(`Drone armor ${Math.ceil(enemy.userData.hp)} / ${enemy.userData.maxHp}`);
     }
   }
-  addShotLine(camera.position.clone(),end);
+  spawnBlasterBolt(muzzle,end);
+  addShotLine(muzzle,end,0xff3b24,90);
+  if(localStormtrooperAvatar)triggerLocomotionRecoil(localStormtrooperAvatar.userData.motion);
 }
 
 const deposits=[
@@ -570,8 +645,10 @@ function collides(x,z){ for(const b of blockers) if(Math.abs(x-b.x)<b.hw && Math
 function updatePlayer(dt){
   if(!gameStarted||systemsUI.isOpen)return;
   const f=(keys.KeyW?1:0)-(keys.KeyS?1:0), s=(keys.KeyD?1:0)-(keys.KeyA?1:0);
+  const sprinting=keys.ShiftLeft||keys.ShiftRight;
+  const speed=sprinting?34:18;
   if(f||s){
-    const len=Math.hypot(f,s), ff=f/len, ss=s/len; const speed=keys.ShiftLeft||keys.ShiftRight?34:18;
+    const len=Math.hypot(f,s), ff=f/len, ss=s/len;
     // Camera-relative movement. Horizontal camera forward is (sin(yaw), cos(yaw)).
     // Its screen-right vector is forward x world-up = (-cos(yaw), sin(yaw)).
     // This keeps W toward the reticle and A/D on the correct visual side of the screen.
@@ -579,10 +656,9 @@ function updatePlayer(dt){
     const dz=(Math.cos(yaw)*ff+Math.sin(yaw)*ss)*speed*dt;
     if(!collides(player.position.x+dx,player.position.z))player.position.x+=dx;
     if(!collides(player.position.x,player.position.z+dz))player.position.z+=dz;
-    // The placeholder avatar's modeled forward axis is -Z, so rotate it 180 degrees
-    // from our yaw basis to face the same direction as the reticle/camera.
-    player.rotation.y=yaw+Math.PI;
+    player.rotation.y=facingRotation(yaw,!!localStormtrooperPrototype);
   }
+  if(localStormtrooperAvatar)applyStormtrooperMotion(localStormtrooperAvatar,dt,Math.hypot(f,s),speed,sprinting);
   player.position.y=terrainHeight(player.position.x,player.position.z);
   player.position.x=THREE.MathUtils.clamp(player.position.x,-1550,1550); player.position.z=THREE.MathUtils.clamp(player.position.z,-1550,1550);
   const r=Math.hypot(player.position.x,player.position.z);
@@ -627,6 +703,7 @@ function updatePrompt(){
 }
 function updateWorld(t,dt){
   traffic.forEach((s,i)=>{s.position.addScaledVector(s.userData.velocity,dt); if(Math.abs(s.position.x)>1700)s.userData.velocity.x*=-1;if(Math.abs(s.position.z)>1700)s.userData.velocity.z*=-1;});
+  updateBlasterBolts(dt);
   const now=performance.now()/1000;
   enemies.forEach((e,i)=>{
     if(e.userData.alive){

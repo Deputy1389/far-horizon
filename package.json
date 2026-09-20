@@ -5,6 +5,7 @@
   "description": "Playable browser proof-of-concept for a true-scale procedural sci-fi sandbox.",
   "scripts": {
     "serve": "python -m http.server 8080",
-    "import:swg": "py tools/import_swg_assets.py"
+    "import:swg": "py tools/import_swg_assets.py",
+    "test:motion": "node tools/test_motion.mjs"
   }
 }
