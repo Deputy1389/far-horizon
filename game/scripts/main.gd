@@ -8,6 +8,7 @@ var roads: RoadNetwork
 var rebel_outpost: RebelOutpost
 var squads: SquadManager
 var strategy: StrategicSim
+var capture_point: CapturePoint
 var hud: DebugHud
 var convoy_proxies: Dictionary = {}
 
@@ -86,6 +87,9 @@ func _build_foundation_world() -> void:
 	hud = DebugHud.new()
 	add_child(hud)
 	hud.configure(player, floating_origin, strategy)
+	if capture_point != null:
+		capture_point.progress_changed.connect(hud.set_capture_progress)
+		hud.set_capture_progress(capture_point.progress / maxf(capture_point.capture_seconds, 0.001), false)
 
 	player.died.connect(_respawn_player)
 
@@ -100,11 +104,11 @@ func _spawn_enemies() -> void:
 		soldier.configure(player, squads, squad_id, spawn)
 
 func _spawn_capture_point() -> void:
-	var capture := CapturePoint.new()
-	add_child(capture)
-	capture.global_position = city.garrison_global_position() + Vector3(0.0, 0.2, 0.0)
-	capture.configure(strategy, "mos_eisley")
-	capture.captured.connect(_on_capture_completed)
+	capture_point = CapturePoint.new()
+	add_child(capture_point)
+	capture_point.global_position = city.garrison_global_position() + Vector3(0.0, 0.2, 0.0)
+	capture_point.configure(strategy, "mos_eisley")
+	capture_point.captured.connect(_on_capture_completed)
 
 func _spawn_speeder() -> void:
 	var speeder := Speeder.new()
@@ -162,6 +166,8 @@ func _bind_mouse(action: StringName, button: MouseButton) -> void:
 	InputMap.action_add_event(action, event)
 
 func _on_capture_completed(_faction: String) -> void:
+	if hud != null:
+		hud.mark_objective_captured()
 	strategy.event_logged.emit("Mos Eisley garrison objective secured. Strategic balance shifted toward the Rebels.")
 
 func _on_force_updated(force_id: String, planet_position: PackedFloat64Array, faction: String, strength: float) -> void:
