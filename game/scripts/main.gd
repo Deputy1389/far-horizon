@@ -7,6 +7,7 @@ var city: CityGenerator
 var squads: SquadManager
 var strategy: StrategicSim
 var hud: DebugHud
+var convoy_proxies: Dictionary = {}
 
 func _ready() -> void:
 	_install_input_map()
@@ -62,6 +63,9 @@ func _build_foundation_world() -> void:
 
 	strategy = StrategicSim.new()
 	add_child(strategy)
+	strategy.configure(floating_origin)
+	strategy.force_updated.connect(_on_force_updated)
+	strategy.force_destroyed.connect(_on_force_destroyed)
 	strategy.initialize_default_war()
 
 	_spawn_enemies()
@@ -89,9 +93,7 @@ func _spawn_capture_point() -> void:
 	add_child(capture)
 	capture.global_position = city.garrison_global_position() + Vector3(0.0, 0.2, 0.0)
 	capture.configure(strategy, "mos_eisley")
-	capture.captured.connect(func(_faction: String) -> void:
-		strategy.event_logged.emit("Mos Eisley garrison objective secured. Strategic balance shifted toward the Rebels.")
-	)
+	capture.captured.connect(_on_capture_completed)
 
 func _spawn_speeder() -> void:
 	var speeder := Speeder.new()
@@ -140,3 +142,38 @@ func _bind_mouse(action: StringName, button: MouseButton) -> void:
 	var event := InputEventMouseButton.new()
 	event.button_index = button
 	InputMap.action_add_event(action, event)
+
+func _on_capture_completed(_faction: String) -> void:
+	strategy.event_logged.emit("Mos Eisley garrison objective secured. Strategic balance shifted toward the Rebels.")
+
+func _on_force_updated(force_id: String, planet_position: PackedFloat64Array, faction: String, strength: float) -> void:
+	var local_position := floating_origin.local_position(planet_position)
+	var horizontal_distance := Vector2(
+		local_position.x - player.global_position.x,
+		local_position.z - player.global_position.z
+	).length()
+
+	if horizontal_distance > 680.0 or strength <= 0.0:
+		if convoy_proxies.has(force_id):
+			var stale = convoy_proxies[force_id]
+			if is_instance_valid(stale):
+				stale.queue_free()
+			convoy_proxies.erase(force_id)
+		return
+
+	var proxy: StrategicConvoyProxy
+	if convoy_proxies.has(force_id) and is_instance_valid(convoy_proxies[force_id]):
+		proxy = convoy_proxies[force_id]
+	else:
+		proxy = StrategicConvoyProxy.new()
+		add_child(proxy)
+		proxy.configure(strategy, force_id, faction, strength, local_position + Vector3.UP * 1.2)
+		convoy_proxies[force_id] = proxy
+	proxy.set_target(local_position + Vector3.UP * 1.2, strength)
+
+func _on_force_destroyed(force_id: String) -> void:
+	if convoy_proxies.has(force_id):
+		var proxy = convoy_proxies[force_id]
+		if is_instance_valid(proxy):
+			proxy.queue_free()
+		convoy_proxies.erase(force_id)
