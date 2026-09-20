@@ -13,9 +13,10 @@ from typing import Any, Iterable
 
 try:
     from swg_twofish import decrypt_twofish_ecb
-from dds_png import DDSDecodeError, dds_to_png_file
+    from dds_png import DDSDecodeError, dds_to_png_file
 except ImportError:  # pragma: no cover - supports importing as tools.import_swg_assets
     from tools.swg_twofish import decrypt_twofish_ecb
+    from tools.dds_png import DDSDecodeError, dds_to_png_file
 
 
 # This is the 128-bit key passed to Crypto::TwofishDecryptor by the Restoration
