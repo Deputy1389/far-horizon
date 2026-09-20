@@ -35,7 +35,21 @@ Then run this script again.
 }
 
 $manifest = Join-Path $Repo "assets\local-swg\manifest.json"
-if ($RefreshAssets -or -not (Test-Path $manifest)) {
+$needsAssetRefresh = $RefreshAssets -or -not (Test-Path $manifest)
+if (-not $needsAssetRefresh) {
+    try {
+        $manifestData = Get-Content $manifest -Raw | ConvertFrom-Json
+        $needsAssetRefresh = (
+            -not $manifestData.assets.sand.godotUrl -or
+            -not $manifestData.audio -or
+            -not $manifestData.audio.blasterRifle
+        )
+    } catch {
+        $needsAssetRefresh = $true
+    }
+}
+
+if ($needsAssetRefresh) {
     Write-Host "Preparing local SWG Restoration assets..." -ForegroundColor Cyan
     & py (Join-Path $Repo "tools\import_swg_assets.py")
     if ($LASTEXITCODE -ne 0) {
