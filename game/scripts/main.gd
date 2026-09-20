@@ -4,6 +4,7 @@ var floating_origin: FloatingOrigin
 var planet: ProceduralPlanet
 var player: FPSController
 var city: CityGenerator
+var roads: RoadNetwork
 var squads: SquadManager
 var strategy: StrategicSim
 var hud: DebugHud
@@ -67,6 +68,10 @@ func _build_foundation_world() -> void:
 	strategy.force_updated.connect(_on_force_updated)
 	strategy.force_destroyed.connect(_on_force_destroyed)
 	strategy.initialize_default_war()
+
+	roads = RoadNetwork.new()
+	add_child(roads)
+	roads.configure(planet, strategy)
 
 	_spawn_enemies()
 	_spawn_capture_point()
@@ -148,6 +153,7 @@ func _on_capture_completed(_faction: String) -> void:
 
 func _on_force_updated(force_id: String, planet_position: PackedFloat64Array, faction: String, strength: float) -> void:
 	var local_position := floating_origin.local_position(planet_position)
+	local_position.y = planet.surface_y(local_position.x, local_position.z)
 	var horizontal_distance := Vector2(
 		local_position.x - player.global_position.x,
 		local_position.z - player.global_position.z
