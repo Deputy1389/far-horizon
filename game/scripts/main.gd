@@ -61,31 +61,12 @@ func _build_foundation_world() -> void:
 
 	player = FPSController.new()
 	add_child(player)
-	player.global_position = Vector3(0.0, 6.0, 180.0)
+	player.global_position = Vector3(0.0, 6.0, 0.0)
 	floating_origin.track(player)
 
-	planet = ProceduralPlanet.new()
-	planet.name = "ProceduralPlanet"
-	add_child(planet)
-	planet.configure(floating_origin, player)
-	planet.add_dressing_exclusion(Vector2(0.0, 180.0), 65.0)
-	planet.add_dressing_exclusion(Vector2(0.0, -260.0), 390.0)
-	planet.generate_initial()
-	player.global_position = planet.surface_point(0.0, 180.0) + Vector3.UP * 0.08
-
-	rebel_outpost = RebelOutpost.new()
-	rebel_outpost.name = "RebelOutpost"
-	add_child(rebel_outpost)
-	rebel_outpost.configure(planet, Vector2(0.0, 180.0))
-
-	city = CityGenerator.new()
-	city.name = "MosEisleyPrototype"
-	add_child(city)
-	city.configure(planet, Vector2(0.0, -260.0))
-
-	squads = SquadManager.new()
-	add_child(squads)
-
+	# Strategic data owns the meaningful map coordinates. The physical world is
+	# projected from those coordinates instead of duplicating city/base numbers
+	# in the scene bootstrap.
 	strategy = StrategicSim.new()
 	add_child(strategy)
 	strategy.configure(floating_origin)
@@ -93,13 +74,40 @@ func _build_foundation_world() -> void:
 	strategy.force_destroyed.connect(_on_force_destroyed)
 	strategy.initialize_default_war()
 
+	var rebel_node: Dictionary = strategy.nodes["rebel_outpost"]
+	var city_node: Dictionary = strategy.nodes["mos_eisley"]
+	var rebel_map: Vector2 = rebel_node["map_position"]
+	var city_map: Vector2 = city_node["map_position"]
+
+	planet = ProceduralPlanet.new()
+	planet.name = "ProceduralPlanet"
+	add_child(planet)
+	planet.configure(floating_origin, player)
+	planet.add_dressing_exclusion(rebel_map, 65.0)
+	planet.add_dressing_exclusion(city_map, 390.0)
+	planet.generate_initial()
+	player.global_position = planet.surface_point(rebel_map.x, rebel_map.y) + Vector3.UP * 0.08
+
+	rebel_outpost = RebelOutpost.new()
+	rebel_outpost.name = "RebelOutpost"
+	add_child(rebel_outpost)
+	rebel_outpost.configure(planet, rebel_map)
+
+	city = CityGenerator.new()
+	city.name = "MosEisleyPrototype"
+	add_child(city)
+	city.configure(planet, city_map)
+
+	squads = SquadManager.new()
+	add_child(squads)
+
 	roads = RoadNetwork.new()
 	add_child(roads)
 	roads.configure(planet, strategy)
 
 	_spawn_enemies()
 	_spawn_capture_point()
-	_spawn_speeder()
+	_spawn_speeder(rebel_map)
 
 	hud = DebugHud.new()
 	add_child(hud)
@@ -127,10 +135,11 @@ func _spawn_capture_point() -> void:
 	capture_point.configure(strategy, "mos_eisley")
 	capture_point.captured.connect(_on_capture_completed)
 
-func _spawn_speeder() -> void:
+func _spawn_speeder(rebel_map: Vector2) -> void:
 	var speeder := Speeder.new()
 	add_child(speeder)
-	var point := planet.surface_point(11.0, 165.0)
+	var speeder_map := rebel_map + Vector2(11.0, -15.0)
+	var point := planet.surface_point(speeder_map.x, speeder_map.y)
 	speeder.global_position = point + Vector3.UP * 1.5
 	speeder.rotation.y = PI
 
