@@ -3,10 +3,12 @@ extends Node
 
 signal event_logged(text: String)
 signal control_changed(node_id: String, owner: String)
-signal force_updated(force_id: String, position: Vector2, faction: String, strength: float)
+signal force_updated(force_id: String, planet_position: PackedFloat64Array, faction: String, strength: float)
+signal force_destroyed(force_id: String)
 
 @export var simulation_tick_seconds := 1.0
 
+var origin_service: FloatingOrigin
 var nodes: Dictionary = {}
 var routes: Array[Dictionary] = []
 var forces: Array[Dictionary] = []
@@ -14,6 +16,9 @@ var accumulator := 0.0
 var campaign_time := 0.0
 var next_convoy_time := 35.0
 var force_serial := 0
+
+func configure(origin: FloatingOrigin) -> void:
+	origin_service = origin
 
 func initialize_default_war() -> void:
 	nodes = {
@@ -31,10 +36,21 @@ func initialize_default_war() -> void:
 	_spawn_force("imperial", 72.0, "imperial_garrison", "mos_eisley", 5.4)
 	event_logged.emit("Planetary war initialized: Mos Eisley is Imperial-held and contested from the south.")
 
-func _node(display_name: String, position: Vector2, owner: String, imperial: float, rebel: float) -> Dictionary:
+func _node(display_name: String, map_position: Vector2, owner: String, imperial: float, rebel: float) -> Dictionary:
+	var planet_position := PackedFloat64Array([0.0, 0.0, 0.0])
+	if origin_service != null:
+		planet_position = PlanetMath.tangent_surface_point(
+			origin_service.origin_ecef,
+			origin_service.frame_basis,
+			map_position.x,
+			map_position.y,
+			origin_service.planet_radius,
+			0.0
+		)
 	return {
 		"name": display_name,
-		"position": position,
+		"map_position": map_position,
+		"planet_position": planet_position,
 		"owner": owner,
 		"imperial": imperial,
 		"rebel": rebel,
@@ -50,14 +66,16 @@ func _process(delta: float) -> void:
 func _tick(delta: float) -> void:
 	campaign_time += delta
 	for force in forces:
-		if bool(force.get("arrived", false)):
+		if bool(force.get("arrived", false)) or bool(force.get("destroyed", false)):
 			continue
 		var from_node: Dictionary = nodes[force["from"]]
 		var to_node: Dictionary = nodes[force["to"]]
-		var distance := max((to_node["position"] as Vector2).distance_to(from_node["position"] as Vector2), 1.0)
+		var a: Vector2 = from_node["map_position"]
+		var b: Vector2 = to_node["map_position"]
+		var distance := max(a.distance_to(b), 1.0)
 		force["progress"] = min(1.0, float(force["progress"]) + float(force["speed"]) * delta / distance)
-		var position := (from_node["position"] as Vector2).lerp(to_node["position"] as Vector2, float(force["progress"]))
-		force_updated.emit(String(force["id"]), position, String(force["faction"]), float(force["strength"]))
+		var planet_position := _force_planet_position(force)
+		force_updated.emit(String(force["id"]), planet_position, String(force["faction"]), float(force["strength"]))
 		if float(force["progress"]) >= 1.0:
 			force["arrived"] = true
 			_resolve_arrival(force)
@@ -78,7 +96,16 @@ func _spawn_force(faction: String, strength: float, from_id: String, to_id: Stri
 		"speed": speed,
 		"progress": 0.0,
 		"arrived": false,
+		"destroyed": false,
 	})
+
+func _force_planet_position(force: Dictionary) -> PackedFloat64Array:
+	var from_node: Dictionary = nodes[force["from"]]
+	var to_node: Dictionary = nodes[force["to"]]
+	var from_ecef: PackedFloat64Array = from_node["planet_position"]
+	var to_ecef: PackedFloat64Array = to_node["planet_position"]
+	var radius := origin_service.planet_radius if origin_service != null else 6_000_000.0
+	return PlanetMath.interpolate_on_sphere(from_ecef, to_ecef, float(force["progress"]), radius)
 
 func _resolve_arrival(force: Dictionary) -> void:
 	var node: Dictionary = nodes[force["to"]]
@@ -99,6 +126,20 @@ func apply_local_result(node_id: String, faction: String, impact: float) -> void
 	event_logged.emit("Local action changed the balance at %s." % String(node["name"]))
 	_evaluate_control(node_id)
 
+func damage_force(force_id: String, amount: float) -> float:
+	for force in forces:
+		if String(force["id"]) != force_id:
+			continue
+		if bool(force.get("destroyed", false)) or bool(force.get("arrived", false)):
+			return 0.0
+		force["strength"] = max(0.0, float(force["strength"]) - max(amount, 0.0))
+		if float(force["strength"]) <= 0.0:
+			force["destroyed"] = true
+			event_logged.emit("%s was destroyed before reaching its destination." % force_id)
+			force_destroyed.emit(force_id)
+		return float(force["strength"])
+	return 0.0
+
 func _evaluate_control(node_id: String) -> void:
 	var node: Dictionary = nodes[node_id]
 	var imperial := float(node["imperial"])
@@ -114,11 +155,6 @@ func _evaluate_control(node_id: String) -> void:
 		nodes[node_id] = node
 		control_changed.emit(node_id, next)
 		event_logged.emit("%s changed control to %s." % [String(node["name"]), next.capitalize()])
-
-func force_position(force: Dictionary) -> Vector2:
-	var from_node: Dictionary = nodes[force["from"]]
-	var to_node: Dictionary = nodes[force["to"]]
-	return (from_node["position"] as Vector2).lerp(to_node["position"] as Vector2, float(force["progress"]))
 
 func summary_lines() -> PackedStringArray:
 	var lines := PackedStringArray()
