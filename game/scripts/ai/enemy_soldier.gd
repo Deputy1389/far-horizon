@@ -199,6 +199,8 @@ func receive_squad_alert(new_target: Node3D) -> void:
 	target = new_target
 
 func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Vector3.ZERO, source = null) -> void:
+	if source is Node and (source as Node).is_in_group("enemy"):
+		return
 	health -= amount
 	if source is Node3D:
 		target = source
