@@ -6,6 +6,8 @@
   "scripts": {
     "serve": "python -m http.server 8080",
     "import:swg": "py tools/import_swg_assets.py",
-    "test:motion": "node tools/test_motion.mjs"
+    "convert:character": "py tools/convert_swg_character.py",
+    "test:motion": "node tools/test_motion.mjs",
+    "test:python": "py -m unittest discover tools -p \"test_*.py\" -q"
   }
 }

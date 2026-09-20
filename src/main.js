@@ -1,5 +1,6 @@
 import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
 import { GLTFLoader } from 'https://esm.sh/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'https://esm.sh/three@0.180.0/examples/jsm/utils/SkeletonUtils.js';
 import { CharacterState, RESOURCE_CATALOG } from './systems.js';
 import { createSystemsUI } from './ui.js';
 import { createMaterialLibrary } from './materials.js';
@@ -215,16 +216,83 @@ async function addLocalSwgMesh(){
 let localStormtrooperPrototype=null;
 let localStormtrooperGroundOffset=0;
 let localStormtrooperAvatar=null;
+let localStormtrooperAnimations=[];
+let localStormtrooperRigged=false;
+function stormtrooperAnimationClip(name){
+  const wanted=String(name||'').toLowerCase();
+  return localStormtrooperAnimations.find(clip=>String(clip.name||'').toLowerCase()===wanted)
+    || localStormtrooperAnimations.find(clip=>String(clip.name||'').toLowerCase().includes(wanted))
+    || localStormtrooperAnimations[0]
+    || null;
+}
+function playStormtrooperAnimation(object,name){
+  const mixer=object?.userData?.animationMixer;
+  if(!mixer)return;
+  const clip=stormtrooperAnimationClip(name);
+  if(!clip)return;
+  if(object.userData.activeAnimation===clip.name)return;
+  const previous=object.userData.activeAction;
+  const action=mixer.clipAction(clip);
+  action.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(.18).play();
+  if(previous&&previous!==action)previous.fadeOut(.18);
+  object.userData.activeAction=action;
+  object.userData.activeAnimation=clip.name;
+}
+function updateStormtrooperAnimation(object,dt,moving,sprinting){
+  if(!object?.userData?.animationMixer)return;
+  playStormtrooperAnimation(object,moving?(sprinting?'run':'walk'):'idle');
+  object.userData.animationMixer.update(Math.max(0,dt));
+  if(typeof window!=='undefined'&&object===localStormtrooperAvatar){
+    window.__farHorizonCharacterStatus={
+      rigged:localStormtrooperRigged,
+      clips:localStormtrooperAnimations.map(clip=>clip.name),
+      active:object.userData.activeAnimation,
+      mixerTime:object.userData.activeAction?.time||0,
+    };
+  }
+}
+function addStormtrooperBlaster(object){
+  if(!object?.userData?.rigged||object.userData.blasterMuzzle)return;
+  // The extracted MGN is the weighted armor body and does not contain the
+  // equipped weapon. Keep the weapon as a small, deterministic presentation
+  // attachment until the SWG appearance/weapon hardpoint chain is converted.
+  const mount=object;
+  const gun=new THREE.Group();
+  const finish=materials.stormtrooperMaterial('weapon');
+  const receiver=new THREE.Mesh(new THREE.BoxGeometry(.22,.2,.72),finish);
+  receiver.position.set(0,0,-.30); gun.add(receiver);
+  const grip=new THREE.Mesh(new THREE.BoxGeometry(.16,.28,.22),finish);
+  grip.position.set(0,-.18,-.08); grip.rotation.x=-.25; gun.add(grip);
+  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.045,.06,.62,8),finish);
+  barrel.rotation.x=Math.PI/2; barrel.position.set(0,.02,-.92); gun.add(barrel);
+  const muzzle=new THREE.Object3D();
+  muzzle.position.set(0,.02,-1.28); gun.add(muzzle);
+  gun.position.set(-.12,1.48,-.42);
+  // In the imported +Z character space the camera sees the rear three-quarter
+  // view, so rotate the compact rifle across the chest for a readable held
+  // silhouette while preserving its muzzle Object3D for bolt spawning.
+  gun.rotation.set(-.06,Math.PI/2,.10);
+  gun.scale.setScalar(.48);
+  gun.traverse(child=>{if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}});
+  mount.add(gun);
+  object.userData.blasterMuzzle=muzzle;
+}
 function localStormtrooperClone(scale=4.6){
   if(!localStormtrooperPrototype)return null;
-  const clone=localStormtrooperPrototype.clone(true);
+  const clone=localStormtrooperRigged?cloneSkeleton(localStormtrooperPrototype):localStormtrooperPrototype.clone(true);
   clone.scale.setScalar(scale);
   clone.userData.groundCorrection=-(localStormtrooperGroundOffset*scale);
   clone.userData.motion=createLocomotionState();
+  clone.userData.rigged=localStormtrooperRigged;
+  clone.userData.animationMixer=localStormtrooperRigged?new THREE.AnimationMixer(clone):null;
+  clone.userData.activeAction=null;
+  clone.userData.activeAnimation='';
+  if(localStormtrooperRigged)playStormtrooperAnimation(clone,'idle');
   clone.position.y=clone.userData.groundCorrection;
   clone.traverse(child=>{
     if(child.isMesh){child.castShadow=true;child.receiveShadow=true;}
   });
+  if(localStormtrooperRigged)addStormtrooperBlaster(clone);
   return clone;
 }
 
@@ -232,6 +300,15 @@ function applyStormtrooperMotion(object,dt,inputMagnitude,speed,sprinting,baseY=
   const state=object.userData.motion;
   if(!state)return;
   updateLocomotion(state,dt,inputMagnitude,speed,sprinting);
+  if(object.userData.rigged){
+    // The actual SWG skeleton owns the limbs now. Keep gameplay movement on
+    // the parent and let the glTF animation provide the gait, avoiding the
+    // old capsule-style root bob that made the statue look like it floated.
+    object.position.y=baseY+(object.userData.groundCorrection||0);
+    updateStormtrooperAnimation(object,dt,inputMagnitude>0.001,sprinting);
+    object.rotation.x=-state.recoil*.025;
+    return;
+  }
   object.position.y=baseY+(object.userData.groundCorrection||0)+state.bob;
   if(allowSway)object.position.x=state.sway;
   object.rotation.x=state.lean-state.recoil*.04;
@@ -259,6 +336,9 @@ async function addLocalSwgCharacter(){
     });
     object.userData.swgSource=character.virtualPath;
     object.userData.swgArchive=character.archive;
+    localStormtrooperAnimations=gltf.animations||[];
+    localStormtrooperRigged=character.rigged===true&&localStormtrooperAnimations.length>0;
+    object.userData.rigged=localStormtrooperRigged;
     localStormtrooperPrototype=object;
     localStormtrooperGroundOffset=Number(character.groundOffset)||0;
     torso.visible=false;
@@ -269,7 +349,7 @@ async function addLocalSwgCharacter(){
     player.add(playerAvatar);
     localStormtrooperAvatar=playerAvatar;
     player.rotation.y=facingRotation(yaw,true);
-    ui.character.textContent='STORMTROOPER';
+    ui.character.textContent=localStormtrooperRigged?'RIGGED STORMTROOPER':'STORMTROOPER';
     console.info(`Loaded local SWG character ${character.virtualPath} from ${character.archive}`);
   }catch(error){
     ui.character.textContent='CAPSULE FALLBACK';
@@ -436,8 +516,10 @@ function addShotLine(start,end,color=0xffd6a0,duration=70){
 }
 function blasterMuzzleWorld(){
   if(localStormtrooperAvatar){
-    // The extracted rifle is part of the SWG character mesh. These local
-    // coordinates sit just beyond its forward barrel bounds.
+    if(localStormtrooperAvatar.userData.blasterMuzzle){
+      return localStormtrooperAvatar.userData.blasterMuzzle.getWorldPosition(new THREE.Vector3());
+    }
+    // Static/capsule fallback or an older local manifest without a weapon.
     return localStormtrooperAvatar.localToWorld(new THREE.Vector3(-.29,1.27,.31));
   }
   return rifle.localToWorld(new THREE.Vector3(0,0,-3.05));
@@ -656,7 +738,11 @@ function updatePlayer(dt){
     const dz=(Math.cos(yaw)*ff+Math.sin(yaw)*ss)*speed*dt;
     if(!collides(player.position.x+dx,player.position.z))player.position.x+=dx;
     if(!collides(player.position.x,player.position.z+dz))player.position.z+=dz;
-    player.rotation.y=facingRotation(yaw,!!localStormtrooperPrototype);
+    // Face the actual travel vector, including S/A/D. Using camera yaw here
+    // made the avatar slide or appear to walk backward when strafing or
+    // reversing because the imported SWG body is authored +Z-forward.
+    const moveYaw=Math.atan2(dx,dz);
+    player.rotation.y=facingRotation(moveYaw,!!localStormtrooperPrototype);
   }
   if(localStormtrooperAvatar)applyStormtrooperMotion(localStormtrooperAvatar,dt,Math.hypot(f,s),speed,sprinting);
   player.position.y=terrainHeight(player.position.x,player.position.z);

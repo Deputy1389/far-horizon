@@ -104,7 +104,16 @@
           "groundOffset": { "type": "number" },
           "submeshes": { "type": "integer", "minimum": 0 },
           "vertices": { "type": "integer", "minimum": 0 },
-          "indices": { "type": "integer", "minimum": 0 }
+          "indices": { "type": "integer", "minimum": 0 },
+          "rigged": { "type": "boolean" },
+          "bones": { "type": "integer", "minimum": 0 },
+          "skins": { "type": "integer", "minimum": 0 },
+          "animations": { "type": "integer", "minimum": 0 },
+          "skeleton": { "type": "string" },
+          "animationPaths": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
         },
         "additionalProperties": true
       }

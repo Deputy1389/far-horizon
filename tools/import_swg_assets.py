@@ -829,8 +829,13 @@ def main() -> int:
     characters: dict[str, dict[str, Any]] = {}
     character_failures: dict[str, str] = {}
     try:
+        from convert_swg_character import (
+            choose_character_skeletal_mesh,
+            convert_from_inventory as convert_rigged_from_inventory,
+            parse_skeletal_mesh,
+        )
         from convert_swg_mesh import (
-            convert_from_inventory,
+            convert_from_inventory as convert_static_from_inventory,
             extract_shader_texture_paths,
             find_display_base_submeshes,
             parse_static_mesh,
@@ -844,40 +849,83 @@ def main() -> int:
                 path_index[key] = entry
 
         for role in CHARACTER_MESH_RULES:
-            character_entry = select_character_mesh(inventory, role)
-            if character_entry is None:
+            static_entry = select_character_mesh(inventory, role)
+            skeletal_entry = choose_character_skeletal_mesh(inventory) if role == "stormtrooper" else None
+            if static_entry is None and skeletal_entry is None:
                 character_failures[role] = "no ranked character mesh candidate"
                 print(f"CHARACTER miss {role}: no ranked mesh candidate")
                 continue
 
             character_root = output_root / "character" / role
-            character_gltf = character_root / f"{role}.gltf"
-            character_bin = character_gltf.with_suffix(".bin")
-            mesh_payload = decode_tre_entry(character_entry.archive, character_entry.metadata)
-            source_submeshes = parse_static_mesh(mesh_payload)
-            hidden_submeshes = (
-                find_display_base_submeshes(source_submeshes)
-                if "statue" in character_entry.virtual_path.lower()
-                else []
-            )
-            rendered_submeshes = [
-                submesh
-                for index, submesh in enumerate(source_submeshes)
-                if index not in hidden_submeshes
-            ]
-            ground_offset = min(
-                (position[1] for submesh in rendered_submeshes for position in submesh.positions),
-                default=0.0,
-            )
-            if hidden_submeshes:
-                print(f"CHARACTER strip {role:<11} display-base submeshes {hidden_submeshes}")
-            converted_entry, character_summary = convert_from_inventory(
-                inventory,
-                character_gltf,
-                character_bin,
-                preferred_virtual_path=character_entry.virtual_path,
-                exclude_submesh_indices=hidden_submeshes,
-            )
+            character_entry: AssetEntry
+            character_gltf: Path
+            character_bin: Path
+            source_submeshes: list[Any]
+            hidden_submeshes: list[int] = []
+            ground_offset = 0.0
+            rigged = False
+            converted_entry: AssetEntry
+            character_summary: dict[str, Any]
+
+            if skeletal_entry is not None:
+                try:
+                    character_gltf = character_root / f"{role}-rigged.gltf"
+                    character_bin = character_gltf.with_suffix(".bin")
+                    converted_entry, character_summary = convert_rigged_from_inventory(
+                        inventory,
+                        character_gltf,
+                        character_bin,
+                        preferred_virtual_path=skeletal_entry.virtual_path,
+                    )
+                    character_entry = converted_entry
+                    rigged_mesh = parse_skeletal_mesh(decode_tre_entry(character_entry.archive, character_entry.metadata))
+                    source_submeshes = list(rigged_mesh.submeshes)
+                    ground_offset = min(
+                        (position[1] for submesh in source_submeshes for position in submesh.positions),
+                        default=0.0,
+                    )
+                    rigged = True
+                    print(
+                        f"CHARACTER rigged {role:<10} {converted_entry.archive.name} :: "
+                        f"{converted_entry.virtual_path} ({character_summary['bones']} bones, "
+                        f"{character_summary['animations']} animation clips)"
+                    )
+                except Exception as exc:
+                    print(f"CHARACTER rigged {role:<10} unavailable: {exc}; trying static fallback")
+
+            if not rigged:
+                if static_entry is None:
+                    character_failures[role] = "rigged candidate failed and no static fallback exists"
+                    print(f"CHARACTER miss {role}: rigged candidate failed and no static fallback exists")
+                    continue
+                character_entry = static_entry
+                character_gltf = character_root / f"{role}.gltf"
+                character_bin = character_gltf.with_suffix(".bin")
+                mesh_payload = decode_tre_entry(character_entry.archive, character_entry.metadata)
+                source_submeshes = parse_static_mesh(mesh_payload)
+                hidden_submeshes = (
+                    find_display_base_submeshes(source_submeshes)
+                    if "statue" in character_entry.virtual_path.lower()
+                    else []
+                )
+                rendered_submeshes = [
+                    submesh
+                    for index, submesh in enumerate(source_submeshes)
+                    if index not in hidden_submeshes
+                ]
+                ground_offset = min(
+                    (position[1] for submesh in rendered_submeshes for position in submesh.positions),
+                    default=0.0,
+                )
+                if hidden_submeshes:
+                    print(f"CHARACTER strip {role:<11} display-base submeshes {hidden_submeshes}")
+                converted_entry, character_summary = convert_static_from_inventory(
+                    inventory,
+                    character_gltf,
+                    character_bin,
+                    preferred_virtual_path=character_entry.virtual_path,
+                    exclude_submesh_indices=hidden_submeshes,
+                )
             shader_bindings: dict[str, list[str]] = {}
             shader_texture_paths: set[str] = set()
             for submesh in source_submeshes:
@@ -937,6 +985,7 @@ def main() -> int:
                 "sourceSubmeshes": len(source_submeshes),
                 "hiddenSubmeshes": hidden_submeshes,
                 "groundOffset": ground_offset,
+                "rigged": rigged,
                 **character_summary,
             }
             print(
