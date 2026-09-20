@@ -44,7 +44,7 @@ func _build_foundation_world() -> void:
 
 	player = FPSController.new()
 	add_child(player)
-	player.global_position = Vector3(0.0, 6.0, 430.0)
+	player.global_position = Vector3(0.0, 6.0, 180.0)
 	floating_origin.track(player)
 
 	planet = ProceduralPlanet.new()
@@ -52,12 +52,12 @@ func _build_foundation_world() -> void:
 	add_child(planet)
 	planet.configure(floating_origin, player)
 	planet.generate_initial()
-	player.global_position = planet.surface_point(0.0, 430.0) + Vector3.UP * 0.08
+	player.global_position = planet.surface_point(0.0, 180.0) + Vector3.UP * 0.08
 
 	city = CityGenerator.new()
 	city.name = "MosEisleyPrototype"
 	add_child(city)
-	city.configure(planet, Vector2(0.0, -420.0))
+	city.configure(planet, Vector2(0.0, -260.0))
 
 	squads = SquadManager.new()
 	add_child(squads)
@@ -103,7 +103,7 @@ func _spawn_capture_point() -> void:
 func _spawn_speeder() -> void:
 	var speeder := Speeder.new()
 	add_child(speeder)
-	var point := planet.surface_point(11.0, 395.0)
+	var point := planet.surface_point(11.0, 165.0)
 	speeder.global_position = point + Vector3.UP * 1.5
 	speeder.rotation.y = PI
 
@@ -117,7 +117,7 @@ func _respawn_player() -> void:
 		base_local.y = planet.surface_y(base_local.x, base_local.z)
 		player.global_position = base_local + Vector3.UP * 0.08
 	else:
-		player.global_position = planet.surface_point(0.0, 430.0) + Vector3.UP * 0.08
+		player.global_position = planet.surface_point(0.0, 180.0) + Vector3.UP * 0.08
 	strategy.apply_local_result("rebel_outpost", "imperial", 4.0)
 	strategy.event_logged.emit("You redeployed at the Rebel outpost. The failed assault cost local strength.")
 
