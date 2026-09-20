@@ -38,11 +38,29 @@ func _setup_materials() -> void:
 	accent_material.metallic = 0.35
 	accent_material.roughness = 0.62
 
+	var wall_texture := SwgAssetBridge.texture_for_role("wall")
+	if wall_texture != null:
+		wall_material.albedo_texture = wall_texture
+		wall_material.albedo_color = Color.WHITE
+	var roof_texture := SwgAssetBridge.texture_for_role("floor")
+	if roof_texture != null:
+		roof_material.albedo_texture = roof_texture
+		roof_material.albedo_color = Color.WHITE
+	var road_texture := SwgAssetBridge.texture_for_role("road")
+	if road_texture != null:
+		road_material.albedo_texture = road_texture
+		road_material.albedo_color = Color.WHITE
+	var metal_texture := SwgAssetBridge.texture_for_role("metal")
+	if metal_texture != null:
+		accent_material.albedo_texture = metal_texture
+		accent_material.albedo_color = Color.WHITE
+
 func _generate() -> void:
 	_generate_roads()
 	_generate_blocks()
 	_generate_garrison()
 	_generate_cover()
+	_place_imported_environment_proof()
 
 func _generate_roads() -> void:
 	var span := city_half_extent * 2.0 + road_spacing
@@ -210,3 +228,11 @@ func _surface_local(offset_x: float, offset_z: float) -> Vector3:
 
 func garrison_global_position() -> Vector3:
 	return to_global(garrison_local)
+
+func _place_imported_environment_proof() -> void:
+	var proof := SwgAssetBridge.instantiate_mesh_proof()
+	if proof == null:
+		return
+	proof.position = _surface_local(-74.0, 92.0)
+	proof.scale = Vector3.ONE * 1.15
+	add_child(proof)
