@@ -72,8 +72,8 @@ func _tick(delta: float) -> void:
 		var to_node: Dictionary = nodes[force["to"]]
 		var a: Vector2 = from_node["map_position"]
 		var b: Vector2 = to_node["map_position"]
-		var distance := max(a.distance_to(b), 1.0)
-		force["progress"] = min(1.0, float(force["progress"]) + float(force["speed"]) * delta / distance)
+		var distance: float = maxf(a.distance_to(b), 1.0)
+		force["progress"] = minf(1.0, float(force["progress"]) + float(force["speed"]) * delta / distance)
 		var planet_position := _force_planet_position(force)
 		force_updated.emit(String(force["id"]), planet_position, String(force["faction"]), float(force["strength"]))
 		if float(force["progress"]) >= 1.0:
@@ -119,9 +119,9 @@ func apply_local_result(node_id: String, faction: String, impact: float) -> void
 	if not nodes.has(node_id):
 		return
 	var node: Dictionary = nodes[node_id]
-	node[faction] = float(node.get(faction, 0.0)) + max(impact, 0.0)
+	node[faction] = float(node.get(faction, 0.0)) + maxf(impact, 0.0)
 	var opponent := "imperial" if faction == "rebel" else "rebel"
-	node[opponent] = max(0.0, float(node.get(opponent, 0.0)) - impact * 0.55)
+	node[opponent] = maxf(0.0, float(node.get(opponent, 0.0)) - impact * 0.55)
 	nodes[node_id] = node
 	event_logged.emit("Local action changed the balance at %s." % String(node["name"]))
 	_evaluate_control(node_id)
@@ -132,7 +132,7 @@ func damage_force(force_id: String, amount: float) -> float:
 			continue
 		if bool(force.get("destroyed", false)) or bool(force.get("arrived", false)):
 			return 0.0
-		force["strength"] = max(0.0, float(force["strength"]) - max(amount, 0.0))
+		force["strength"] = maxf(0.0, float(force["strength"]) - maxf(amount, 0.0))
 		if float(force["strength"]) <= 0.0:
 			force["destroyed"] = true
 			event_logged.emit("%s was destroyed before reaching its destination." % force_id)
