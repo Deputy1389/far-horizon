@@ -89,10 +89,10 @@ func _physics_process(delta: float) -> void:
 	else:
 		forward_speed = move_toward(forward_speed, 0.0, 6.0 * delta)
 
-	lateral_speed = move_toward(lateral_speed, 0.0, lateral_grip * delta * max(1.0, abs(lateral_speed)))
-	var steering_authority := clamp(abs(forward_speed) / 9.0, 0.22, 1.0)
-	if abs(steer) > 0.001:
-		rotate_y(-steer * yaw_rate * steering_authority * delta * sign(forward_speed if abs(forward_speed) > 0.5 else 1.0))
+	lateral_speed = move_toward(lateral_speed, 0.0, lateral_grip * delta * maxf(1.0, absf(lateral_speed)))
+	var steering_authority: float = clampf(absf(forward_speed) / 9.0, 0.22, 1.0)
+	if absf(steer) > 0.001:
+		rotate_y(-steer * yaw_rate * steering_authority * delta * signf(forward_speed if absf(forward_speed) > 0.5 else 1.0))
 		forward = -global_basis.z
 		right = global_basis.x
 
@@ -102,7 +102,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	var target_bank := -steer * clamp(abs(forward_speed) / max_speed, 0.0, 1.0) * 0.28
+	var target_bank: float = -steer * clampf(absf(forward_speed) / max_speed, 0.0, 1.0) * 0.28
 	bank = lerpf(bank, target_bank, 1.0 - exp(-delta * 7.0))
 	visual.rotation.z = bank
 	visual.rotation.x = lerpf(visual.rotation.x, -throttle * 0.035, 1.0 - exp(-delta * 5.0))
