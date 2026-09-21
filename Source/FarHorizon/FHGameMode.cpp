@@ -4,15 +4,72 @@
 #include "FHHUD.h"
 #include "FHPlayerCharacter.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "UObject/SoftObjectPath.h"
+
+namespace
+{
+    static const TCHAR* ShooterCharacterClassPath =
+        TEXT("/Game/Variant_Shooter/Blueprints/BP_ShooterCharacter.BP_ShooterCharacter_C");
+
+    static const TCHAR* ShooterPlayerControllerClassPath =
+        TEXT("/Game/Variant_Shooter/Blueprints/BP_ShooterPlayerController.BP_ShooterPlayerController_C");
+}
 
 AFHGameMode::AFHGameMode()
 {
     DefaultPawnClass = AFHPlayerCharacter::StaticClass();
     HUDClass = AFHHUD::StaticClass();
+}
+
+void AFHGameMode::InitGame(
+    const FString& MapName,
+    const FString& Options,
+    FString& ErrorMessage)
+{
+    TryEnableEpicShooterFoundation();
+    Super::InitGame(MapName, Options, ErrorMessage);
+}
+
+bool AFHGameMode::TryEnableEpicShooterFoundation()
+{
+    if (FParse::Param(FCommandLine::Get(), TEXT("FarHorizonCppFPS")))
+    {
+        return false;
+    }
+
+    const FSoftClassPath CharacterPath(ShooterCharacterClassPath);
+    const FSoftClassPath ControllerPath(ShooterPlayerControllerClassPath);
+
+    UClass* ShooterCharacterClass =
+        CharacterPath.TryLoadClass<APawn>();
+
+    UClass* ShooterControllerClass =
+        ControllerPath.TryLoadClass<APlayerController>();
+
+    if (!ShooterCharacterClass || !ShooterControllerClass)
+    {
+        UE_LOG(
+            LogTemp,
+            Display,
+            TEXT("Far Horizon: Epic Shooter foundation not installed locally; using C++ fallback FPS."));
+        return false;
+    }
+
+    DefaultPawnClass = ShooterCharacterClass;
+    PlayerControllerClass = ShooterControllerClass;
+    bUsingEpicShooterFoundation = true;
+
+    UE_LOG(
+        LogTemp,
+        Display,
+        TEXT("Far Horizon: using migrated Epic UE 5.8 Shooter character/controller foundation."));
+
+    return true;
 }
 
 void AFHGameMode::BeginPlay()
