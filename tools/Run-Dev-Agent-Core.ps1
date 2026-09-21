@@ -381,6 +381,34 @@ function Publish-FHResult {
     }
 }
 
+function Get-FHEpicTemplateInventory {
+    param([Parameter(Mandatory=$true)][string]$EngineRoot)
+
+    $contentRoot = Join-Path $EngineRoot "Templates\TP_FirstPerson\Content"
+    if (-not (Test-Path $contentRoot)) {
+        return @{
+            available = $false
+            assetCount = 0
+            highlights = @()
+        }
+    }
+
+    $assets = @(Get-ChildItem -Path $contentRoot -Recurse -File -Filter "*.uasset" -ErrorAction SilentlyContinue)
+    $relative = @($assets | ForEach-Object {
+        $_.FullName.Substring($contentRoot.Length).TrimStart("\", "/") -replace "\\", "/"
+    })
+
+    $highlights = @($relative | Where-Object {
+        $_ -match "(?i)(mannequin|character|weapon|rifle|pistol|shooter|enemy|state.?tree|eqs|behavior|anim|montage|aim|fire|reload)"
+    } | Sort-Object | Select-Object -First 300)
+
+    return @{
+        available = $true
+        assetCount = $relative.Count
+        highlights = $highlights
+    }
+}
+
 function Invoke-FHValidation {
     param(
         [Parameter(Mandatory=$true)][string]$Sha,
@@ -526,6 +554,7 @@ function Invoke-FHValidation {
         shortSha = $shortSha
         testedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
         engineVersion = $Engine.Version
+        epicTemplate = Get-FHEpicTemplateInventory -EngineRoot $Engine.Root
         failedStage = $failedStage
         steps = $stepSummary
         diagnostics = $diagnostics
@@ -626,6 +655,7 @@ while ($true) {
                     shortSha = $shortSha
                     testedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
                     engineVersion = $engine.Version
+                    epicTemplate = Get-FHEpicTemplateInventory -EngineRoot $engine.Root
                     failedStage = "runner"
                     steps = @()
                     diagnostics = $safeException
@@ -679,6 +709,7 @@ $($result.diagnostics)
                         shortSha = $result.shortSha
                         testedAtUtc = $result.testedAtUtc
                         engineVersion = $result.engineVersion
+                        epicTemplate = $result.epicTemplate
                         failedStage = $result.failedStage
                         steps = $result.steps
                         diagnostics = $result.diagnostics
