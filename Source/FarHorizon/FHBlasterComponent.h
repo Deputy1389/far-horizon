@@ -53,7 +53,7 @@ public:
     float RoundsPerSecond = 8.0f;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="Blaster|Debug")
-    bool bDrawDebugShot = false;
+    bool bDrawDebugShot = true;
 
 private:
     double NextAllowedFireTime = 0.0;
