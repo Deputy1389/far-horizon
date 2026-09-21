@@ -18,6 +18,16 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not update Far Horizon from GitHub."
 }
 
+$epicInstaller = Join-Path $PSScriptRoot "Install-Epic-FPS-Foundation.ps1"
+if (Test-Path $epicInstaller) {
+    Write-Host ""
+    Write-Host "Checking real Epic FPS character / weapon / AI foundation..." -ForegroundColor Cyan
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $epicInstaller
+    if ($LASTEXITCODE -ne 0) {
+        throw "Epic FPS foundation setup failed. Read the status above."
+    }
+}
+
 $existingSupervisors = @()
 
 try {
