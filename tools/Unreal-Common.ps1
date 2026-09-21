@@ -26,7 +26,7 @@ function Test-FHUnrealRoot {
 
 function Add-FHUnrealCandidate {
     param(
-        [Parameter(Mandatory=$true)][System.Collections.Generic.List[string]]$List,
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][System.Collections.Generic.List[string]]$List,
         [string]$Path
     )
 
