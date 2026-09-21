@@ -99,15 +99,10 @@ function Ensure-FHTestWorktree {
         }
     }
 
-    # Local-only Unreal content is intentionally ignored by Git. Mount the
-    # migrated Epic FPS foundation and locally imported SWG content into the
-    # isolated validation worktree when they exist on the user's machine.
+    # Only Far Horizon-owned local Unreal content is mounted into validation.
+    # Do not transplant Epic template Blueprints: they rely on template-specific
+    # project context and are reference material, not runtime dependencies.
     $localContentFolders = @(
-        "FirstPerson",
-        "Variant_Shooter",
-        "Characters",
-        "Weapons",
-        "LevelPrototyping",
         "FarHorizon\LocalSWG"
     )
 
@@ -558,7 +553,16 @@ function Invoke-FHValidation {
             $boot = Invoke-FHLoggedProcess @bootParams
             $steps.Add($boot)
 
-            $bootFailure = Test-FHLogFailure -Paths @($boot.StdOut, $boot.StdErr) -Patterns @("Fatal error", "Unhandled Exception", "Assertion failed")
+            $bootFailure = Test-FHLogFailure `
+                -Paths @($boot.StdOut, $boot.StdErr) `
+                -Patterns @(
+                    "Fatal error",
+                    "Unhandled Exception",
+                    "Assertion failed",
+                    "=== Critical error:",
+                    "LogOutputDevice: Error: \[Callstack\].*UnrealEditor-FarHorizon\.dll",
+                    "Ensure condition failed:.*FarHorizon"
+                )
             $bootPass = ($boot.ExitCode -eq 0 -and -not $bootFailure)
         }
     }
