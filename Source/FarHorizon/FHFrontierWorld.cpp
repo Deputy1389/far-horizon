@@ -501,6 +501,25 @@ void AFHFrontierWorld::SpawnCombatPopulation()
         NpcClass = AFHEnemyCharacter::StaticClass();
     }
 
+    // The Epic shooter character acquires weapons through its own proven
+    // pickup/weapon system. Put a rifle directly on the approach from the
+    // player spawn so the first playtest immediately exercises that path.
+    const FSoftClassPath EpicRiflePath(
+        TEXT("/Game/Variant_Shooter/Blueprints/Pickups/Weapons/BP_ShooterWeapon_Rifle.BP_ShooterWeapon_Rifle_C"));
+
+    if (UClass* RifleClass = EpicRiflePath.TryLoadClass<AActor>())
+    {
+        FActorSpawnParameters RifleParams;
+        RifleParams.SpawnCollisionHandlingOverride =
+            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+        World->SpawnActor<AActor>(
+            RifleClass,
+            FVector(-7450.0f, -6550.0f, 120.0f),
+            FRotator(0.0f, 42.0f, 0.0f),
+            RifleParams);
+    }
+
     const TArray<FVector> SpawnPoints = {
         FVector(5600.0f, 1800.0f, 120.0f),
         FVector(4200.0f, -2700.0f, 120.0f),
