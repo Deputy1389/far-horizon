@@ -10,6 +10,8 @@ extends Resource
 @export var recoil_pitch_degrees := 0.65
 @export var recoil_yaw_degrees := 0.18
 @export var ads_fov := 58.0
+@export var heat_per_shot := 0.12
+@export var cooling_rate := 0.34
 @export var viewmodel_scale := Vector3.ONE
 @export var viewmodel_offset := Vector3(0.28, -0.22, -0.55)
 @export var ads_offset := Vector3(0.0, -0.17, -0.42)
@@ -24,6 +26,8 @@ static func pistol() -> WeaponDefinition:
 	weapon.ads_spread_degrees = 0.14
 	weapon.recoil_pitch_degrees = 0.9
 	weapon.recoil_yaw_degrees = 0.24
+	weapon.heat_per_shot = 0.19
+	weapon.cooling_rate = 0.42
 	weapon.viewmodel_offset = Vector3(0.27, -0.24, -0.5)
 	weapon.ads_offset = Vector3(0.0, -0.19, -0.36)
 	return weapon
@@ -38,6 +42,8 @@ static func rifle() -> WeaponDefinition:
 	weapon.ads_spread_degrees = 0.1
 	weapon.recoil_pitch_degrees = 0.42
 	weapon.recoil_yaw_degrees = 0.12
+	weapon.heat_per_shot = 0.105
+	weapon.cooling_rate = 0.31
 	weapon.viewmodel_offset = Vector3(0.31, -0.25, -0.68)
 	weapon.ads_offset = Vector3(0.0, -0.18, -0.51)
 	return weapon
