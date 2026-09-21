@@ -5,8 +5,8 @@
 #include "FHFrontierWorld.generated.h"
 
 class UHierarchicalInstancedStaticMeshComponent;
-class USceneComponent;
 class UMaterialInterface;
+class USceneComponent;
 class UStaticMesh;
 
 UCLASS()
@@ -22,12 +22,21 @@ protected:
 
 private:
     void BuildEnvironment();
+    void BuildRoadNetwork();
     void BuildCity();
     void BuildStarport();
     void BuildOutskirts();
     void BuildLighting();
     void BuildNavigation();
     void SpawnCombatPopulation();
+
+    void BuildBuilding(
+        const FVector& Location,
+        float Width,
+        float Depth,
+        float Height,
+        float Yaw,
+        float Density);
 
     void AddBox(
         UHierarchicalInstancedStaticMeshComponent* Component,
@@ -36,6 +45,12 @@ private:
         const FRotator& Rotation = FRotator::ZeroRotator);
 
     void AddCylinder(
+        UHierarchicalInstancedStaticMeshComponent* Component,
+        const FVector& Location,
+        const FVector& SizeCm,
+        const FRotator& Rotation = FRotator::ZeroRotator);
+
+    void AddSphere(
         UHierarchicalInstancedStaticMeshComponent* Component,
         const FVector& Location,
         const FVector& SizeCm,
@@ -52,8 +67,14 @@ private:
     UPROPERTY()
     TObjectPtr<UStaticMesh> CylinderMesh;
 
+    UPROPERTY()
+    TObjectPtr<UStaticMesh> SphereMesh;
+
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> SandInstances;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> DuneInstances;
 
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> RoadInstances;
@@ -71,6 +92,9 @@ private:
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> MetalInstances;
 
     UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> DomeInstances;
+
+    UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> LandingPadInstances;
 
     UPROPERTY(VisibleAnywhere)
@@ -78,6 +102,7 @@ private:
 
     FRandomStream RandomStream;
 
-    static constexpr float CityRadius = 9000.0f;
-    static constexpr float WorldRadius = 22000.0f;
+    static constexpr float CityRadius = 110000.0f;
+    static constexpr float GroundHalfExtent = 800000.0f;
+    static constexpr float CityCell = 14000.0f;
 };
