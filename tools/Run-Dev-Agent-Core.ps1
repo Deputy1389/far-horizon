@@ -4,6 +4,7 @@ param(
     [int]$PollSeconds = 20,
     [string]$EngineRoot = "",
     [string]$ResultsBranch = "automation/unreal-local-results",
+    [string]$RepoRootOverride = "",
     [switch]$RunOnce,
     [switch]$LaunchOnPass,
     [switch]$NoPublish
@@ -12,7 +13,11 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2.0
 
-$RepoRoot = Split-Path -Parent $PSScriptRoot
+$RepoRoot = if (-not [string]::IsNullOrWhiteSpace($RepoRootOverride)) {
+    [System.IO.Path]::GetFullPath($RepoRootOverride)
+} else {
+    Split-Path -Parent $PSScriptRoot
+}
 $Common = Join-Path $PSScriptRoot "Unreal-Common.ps1"
 
 if (-not (Test-Path $Common)) {
