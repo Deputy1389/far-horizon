@@ -1,7 +1,7 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
     "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(135,35): error C2039: \u0027SetAtmosphereSunLight\u0027: is not a member of \u0027ULightComponent\u0027\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(136,35): error C2039: \u0027SetAtmosphereSunLightIndex\u0027: is not a member of \u0027ULightComponent\u0027\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(137,35): error C2039: \u0027SetDynamicShadowDistanceMovableLight\u0027: is not a member of \u0027ULightComponent\u0027",
-    "sha":  "f2aa03effbca69b03f11ec499cf0e1354f68e4e6",
+    "sha":  "09724326143c486293c41fac5f7da4f270371c78",
     "failedStage":  "build",
     "engineVersion":  "5.8",
     "epicTemplate":  {
@@ -69,15 +69,15 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "f2aa03effbca",
+    "shortSha":  "09724326143c",
     "status":  "FAIL",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  12.5,
+                      "durationSeconds":  5.3,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T07:19:30.5054931Z"
+    "testedAtUtc":  "2026-09-21T07:20:01.5760047Z"
 }
