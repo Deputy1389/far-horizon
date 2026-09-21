@@ -12,6 +12,8 @@ var capture_point: CapturePoint
 var hud: DebugHud
 var convoy_proxies: Dictionary = {}
 var infantry_spawn_map := Vector2.ZERO
+var reinforcement_waves_remaining := 2
+var reinforcement_serial := 0
 @onready var startup_overlay: CanvasLayer = $StartupOverlay
 @onready var startup_status: Label = $StartupOverlay/Status
 
@@ -132,6 +134,7 @@ func _build_foundation_world() -> void:
 	_stage("Spawning tactical AI...")
 	squads = SquadManager.new()
 	add_child(squads)
+	squads.squad_cleared.connect(_on_squad_cleared)
 
 	_stage("Connecting strategic road network...")
 	roads = RoadNetwork.new()
@@ -158,13 +161,16 @@ func _build_foundation_world() -> void:
 func _spawn_enemies() -> void:
 	var positions := city.combat_spawns
 	for index in range(min(positions.size(), 8)):
-		var soldier := EnemySoldier.new()
 		var squad_id := "garrison_a" if index < 4 else "garrison_b"
-		add_child(soldier)
-		var spawn := positions[index]
-		spawn.y += 0.15
-		soldier.configure(player, squads, squad_id, spawn)
-		soldier.killed.connect(_on_imperial_soldier_killed)
+		_spawn_enemy(positions[index], squad_id)
+
+func _spawn_enemy(spawn_position: Vector3, squad_id: String) -> void:
+	var soldier := EnemySoldier.new()
+	add_child(soldier)
+	var spawn := spawn_position
+	spawn.y += 0.15
+	soldier.configure(player, squads, squad_id, spawn)
+	soldier.killed.connect(_on_imperial_soldier_killed)
 
 func _spawn_capture_point() -> void:
 	capture_point = CapturePoint.new()
@@ -223,8 +229,29 @@ func _bind_mouse(action: StringName, button: MouseButton) -> void:
 	event.button_index = button
 	InputMap.action_add_event(action, event)
 
+func _on_squad_cleared(_squad_id: String) -> void:
+	if reinforcement_waves_remaining <= 0 or capture_point == null or capture_point.completed:
+		return
+	reinforcement_waves_remaining -= 1
+	reinforcement_serial += 1
+	var wave_id := "reinforcement_%d" % reinforcement_serial
+	strategy.event_logged.emit("Imperial reinforcements inbound.")
+	await get_tree().create_timer(2.8).timeout
+	if capture_point == null or capture_point.completed:
+		return
+	var positions := city.combat_spawns
+	if positions.is_empty():
+		return
+	var start := (reinforcement_serial * 3) % positions.size()
+	for offset in range(min(4, positions.size())):
+		var index := (start + offset * 2) % positions.size()
+		_spawn_enemy(positions[index], wave_id)
+
+
 func _on_imperial_soldier_killed(_soldier: EnemySoldier) -> void:
 	strategy.apply_casualties("mos_eisley", "imperial", 3.0)
+	if hud != null:
+		hud.confirm_kill()
 
 func _on_capture_completed(_faction: String) -> void:
 	if hud != null:
