@@ -200,6 +200,7 @@ func _install_input_map() -> void:
 	_bind_key("crouch", KEY_C)
 	_bind_key("prone", KEY_Z)
 	_bind_key("interact", KEY_E)
+	_bind_key("vent", KEY_R)
 	_bind_key("weapon_1", KEY_1)
 	_bind_key("weapon_2", KEY_2)
 	_bind_key("pause_mouse", KEY_ESCAPE)
