@@ -1178,50 +1178,70 @@ def choose_character_skeletal_mesh(entries: Iterable[AssetEntry]) -> AssetEntry 
 
 
 def character_animation_specs() -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
-    """Curated humanoid rifle clips with strict semantic fallbacks.
+    """Curated humanoid rifle clips for directional combat locomotion.
 
-    Exact Restoration paths are preferred. If a patch renames/moves one of
-    them, the fallback search must still match the requested motion instead of
-    silently selecting an arbitrary all_b animation.
+    SWG already contains separate forward/back/strafe rifle clips. Import them
+    explicitly instead of rotating a forward-running animation around at
+    runtime.
     """
     return (
         (
             "idle",
             (
+                "appearance/animation/all_b_cbt_rifle_standing_aimed_idle_front_left.ans",
                 "appearance/animation/all_b_cbt_rifle_standing_ready_idle_front_left.ans",
-                "appearance/animation/all_b_ad_stormtrooper1.ans",
             ),
-            ("all_b", "rifle", "idle"),
+            ("all_b", "rifle", "standing", "idle"),
         ),
         (
-            "walk",
+            "walk_forward",
             (
+                "appearance/animation/all_b_cbt_rifle_walk_aimed.ans",
                 "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
-                "appearance/animation/all_b_loc_walk_male.ans",
             ),
-            ("all_b", "walk"),
+            ("all_b", "rifle", "walk", "aimed"),
         ),
         (
-            "run",
-            ("appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",),
-            ("all_b", "run", "rifle"),
+            "walk_back",
+            (
+                "appearance/animation/all_b_cbt_rifle_a_walk_backwards_aimed.ans",
+                "appearance/animation/all_b_cbt_rifle_a_walk_backwards_ready.ans",
+            ),
+            ("all_b", "rifle", "walk", "backwards"),
+        ),
+        (
+            "strafe_left",
+            (
+                "appearance/animation/all_b_cbt_rifle_a_walk_sidestepl_aimed.ans",
+                "appearance/animation/all_b_cbt_rifle_walk_aimed_left.ans",
+            ),
+            ("all_b", "rifle", "sidestepl"),
+        ),
+        (
+            "strafe_right",
+            (
+                "appearance/animation/all_b_cbt_rifle_a_walk_sidestepr_aimed.ans",
+                "appearance/animation/all_b_cbt_rifle_walk_aimed_right.ans",
+            ),
+            ("all_b", "rifle", "sidestepr"),
+        ),
+        (
+            "run_forward",
+            (
+                "appearance/animation/all_b_cbt_rifle_run_ready.ans",
+                "appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",
+            ),
+            ("all_b", "rifle", "run", "ready"),
         ),
         (
             "fire",
             (
-                "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front_left.ans",
+                "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front.ans",
+                "appearance/animation/all_b_cbt_rifle_a_standing_aimed_fire_single.ans",
             ),
-            ("all_b", "rifle", "standing", "fire"),
-        ),
-        (
-            "death",
-            (
-                "appearance/animation/all_b_npc_death_pose_2.ans",
-            ),
-            ("all_b", "death", "pose"),
+            ("all_b", "rifle", "standing", "fire", "front"),
         ),
     )
-
 
 def convert_from_inventory(
     entries: Iterable[AssetEntry],
