@@ -27,12 +27,12 @@ AFHEnemyCharacter::AFHEnemyCharacter()
 
     auto AddBodyPart = [this](
         const TCHAR* Name,
-        UStaticMesh* Mesh,
+        UStaticMesh* MeshAsset,
         const FVector& Location,
         const FVector& Scale,
         const FRotator& Rotation = FRotator::ZeroRotator)
     {
-        if (!Mesh)
+        if (!MeshAsset)
         {
             return;
         }
@@ -40,7 +40,7 @@ AFHEnemyCharacter::AFHEnemyCharacter()
         UStaticMeshComponent* Part =
             CreateDefaultSubobject<UStaticMeshComponent>(Name);
         Part->SetupAttachment(GetRootComponent());
-        Part->SetStaticMesh(Mesh);
+        Part->SetStaticMesh(MeshAsset);
         Part->SetRelativeLocation(Location);
         Part->SetRelativeScale3D(Scale);
         Part->SetRelativeRotation(Rotation);
