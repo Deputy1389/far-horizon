@@ -91,6 +91,18 @@ AUDIO_TARGETS: dict[str, tuple[str, ...]] = {
     "speederLoop": (
         "sample/veh_flashspeeder_run_lp.wav",
     ),
+    "footstepSand1": (
+        "sample/fs_out_sand_crunch_01.wav",
+    ),
+    "footstepSand2": (
+        "sample/fs_out_sand_crunch_02.wav",
+    ),
+    "footstepSand3": (
+        "sample/fs_out_sand_crunch_03.wav",
+    ),
+    "footstepSand4": (
+        "sample/fs_out_sand_crunch_04.wav",
+    ),
 }
 
 
