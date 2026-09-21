@@ -68,7 +68,9 @@ if (-not $needsAssetRefresh) {
             -not $manifestData.weapons.blasterRifle -or
             -not $manifestData.characters -or
             -not $manifestData.characters.stormtrooper -or
-            [int]$manifestData.characters.stormtrooper.pipelineRevision -lt 4
+            -not $manifestData.characters.firstPersonHands -or
+            [int]$manifestData.characters.stormtrooper.pipelineRevision -lt 4 -or
+            [int]$manifestData.characters.firstPersonHands.pipelineRevision -lt 4
         )
     } catch {
         $needsAssetRefresh = $true
