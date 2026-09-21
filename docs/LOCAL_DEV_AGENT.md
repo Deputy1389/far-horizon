@@ -37,7 +37,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\Run-Dev-Agent.ps1
 
 Leave that PowerShell window open. Stop it with `Ctrl+C`.
 
-The runner immediately validates the current remote head, then polls every 20 seconds.
+The supervisor immediately validates the current remote head, then polls every 20 seconds. For each new commit it loads `tools/Run-Dev-Agent-Core.ps1` and `tools/Unreal-Common.ps1` directly from that exact commit before running validation. This means normal runner-core fixes are picked up automatically without restarting the long-lived PowerShell supervisor.
 
 ## Useful options
 
@@ -143,6 +143,7 @@ After compile and automation pass, the runner starts the project in unattended g
 - Full machine logs are not published.
 - Published diagnostics are bounded and path-sanitized.
 - A failed test waits for a new commit rather than hammering the same failure indefinitely.
+- The long-lived script is only a minimal supervisor; the validation core is reloaded from every tested commit, so runner-core changes self-update on the next poll.
 - Build/test timeouts prevent an unattended process from hanging forever.
 
 ## What this does not do
