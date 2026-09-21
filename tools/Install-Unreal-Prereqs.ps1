@@ -55,4 +55,16 @@ if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
 Write-Host ""
 Write-Host "UNREAL_NETFX_PREREQS_READY"
 Write-Host "The .NET Framework 4.8 SDK/tooling install completed."
-Write-Host "Your existing Far Horizon dev-agent supervisor can remain open; it will retest on the next commit."
+Write-Host "Your existing Far Horizon dev-agent supervisor can remain open."
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$core = Join-Path $PSScriptRoot "Run-Dev-Agent-Core.ps1"
+
+if (Test-Path $core) {
+    Write-Host ""
+    Write-Host "Running one validation now that the prerequisite is installed..."
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $core -RepoRootOverride $repoRoot -RunOnce
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "The prerequisite install completed, but the immediate validation process returned exit code $LASTEXITCODE."
+    }
+}
