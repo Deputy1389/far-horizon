@@ -28,6 +28,16 @@ if (Test-Path $epicInstaller) {
     }
 }
 
+$swgInstaller = Join-Path $PSScriptRoot "Install-SWG-Unreal-Assets.ps1"
+if (Test-Path $swgInstaller) {
+    Write-Host ""
+    Write-Host "Checking Far Horizon desert / city material foundation..." -ForegroundColor Cyan
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $swgInstaller
+    if ($LASTEXITCODE -ne 0) {
+        throw "SWG world-material setup failed. Read the status above."
+    }
+}
+
 $existingSupervisors = @()
 
 try {
