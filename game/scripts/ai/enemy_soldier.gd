@@ -21,11 +21,23 @@ var fire_cooldown := 0.0
 var repath_timer := 0.0
 var rng := RandomNumberGenerator.new()
 var gravity := 18.0
+var dead := false
+var death_timer := 0.0
+var death_roll := 1.0
+var hit_stun := 0.0
+var combat_action_timer := 0.0
+var combat_move_mode := 0
+var strafe_sign := 1.0
+var burst_remaining := 0
 
 var visual_root := Node3D.new()
 var muzzle := Marker3D.new()
 var animation_player: AnimationPlayer
 var active_animation := ""
+var fire_audio := AudioStreamPlayer3D.new()
+var muzzle_flash_mesh := MeshInstance3D.new()
+var muzzle_flash_light := OmniLight3D.new()
+var muzzle_flash_time := 0.0
 
 func configure(player_ref: Node3D, manager: SquadManager, id: String, spawn_position: Vector3) -> void:
 	player = player_ref
@@ -46,6 +58,7 @@ func _ready() -> void:
 	floor_max_angle = deg_to_rad(50.0)
 	_build_collision()
 	_build_visual()
+	_build_combat_fx()
 	_choose_patrol_target()
 
 func _build_collision() -> void:
@@ -79,11 +92,56 @@ func _build_visual() -> void:
 		mesh_instance.material_override = material
 		visual_root.add_child(mesh_instance)
 
-	muzzle.position = Vector3(0.23, 1.32, -0.55)
+	var weapon := SwgAssetBridge.instantiate_weapon("blasterRifle")
+	if weapon != null:
+		weapon.position = Vector3(0.22, 1.22, -0.30)
+		weapon.rotation.x += deg_to_rad(-8.0)
+		visual_root.add_child(weapon)
+
+	muzzle.position = Vector3(0.23, 1.32, -0.62)
 	add_child(muzzle)
 
+func _build_combat_fx() -> void:
+	fire_audio.stream = SwgAssetBridge.audio_for_role("blasterRifle")
+	fire_audio.unit_size = 9.0
+	fire_audio.max_distance = 95.0
+	fire_audio.volume_db = -10.0
+	add_child(fire_audio)
+
+	var flash_mesh := SphereMesh.new()
+	flash_mesh.radius = 0.045
+	flash_mesh.height = 0.09
+	flash_mesh.radial_segments = 6
+	muzzle_flash_mesh.mesh = flash_mesh
+	var flash_material := StandardMaterial3D.new()
+	flash_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flash_material.albedo_color = Color(1.0, 0.18, 0.03)
+	flash_material.emission_enabled = true
+	flash_material.emission = Color(1.0, 0.03, 0.01)
+	flash_material.emission_energy_multiplier = 9.0
+	muzzle_flash_mesh.material_override = flash_material
+	muzzle_flash_mesh.visible = false
+	muzzle.add_child(muzzle_flash_mesh)
+
+	muzzle_flash_light.light_color = Color(1.0, 0.12, 0.02)
+	muzzle_flash_light.light_energy = 1.6
+	muzzle_flash_light.omni_range = 2.8
+	muzzle_flash_light.visible = false
+	muzzle.add_child(muzzle_flash_light)
+
+
 func _physics_process(delta: float) -> void:
-	fire_cooldown = max(0.0, fire_cooldown - delta)
+	muzzle_flash_time = maxf(0.0, muzzle_flash_time - delta)
+	if muzzle_flash_time <= 0.0:
+		muzzle_flash_mesh.visible = false
+		muzzle_flash_light.visible = false
+
+	if dead:
+		_update_death(delta)
+		return
+
+	fire_cooldown = maxf(0.0, fire_cooldown - delta)
+	hit_stun = maxf(0.0, hit_stun - delta)
 	perception_timer -= delta
 	repath_timer -= delta
 
@@ -94,7 +152,10 @@ func _physics_process(delta: float) -> void:
 		perception_timer = 0.14 + rng.randf_range(0.0, 0.08)
 		_update_perception()
 
-	if target != null and is_instance_valid(target):
+	if hit_stun > 0.0:
+		velocity.x = move_toward(velocity.x, 0.0, move_speed * 12.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, move_speed * 12.0 * delta)
+	elif target != null and is_instance_valid(target):
 		_combat_update(delta)
 	else:
 		_patrol_update(delta)
@@ -133,38 +194,59 @@ func _combat_update(delta: float) -> void:
 	var distance: float = maxf(offset.length(), 0.001)
 	var away := offset / distance
 	var side := Vector3.UP.cross(away).normalized()
-	var desired := target_position + away * preferred_distance
+
+	combat_action_timer -= delta
+	if combat_action_timer <= 0.0:
+		combat_action_timer = rng.randf_range(0.75, 1.6)
+		if distance > preferred_distance + 12.0:
+			combat_move_mode = 3
+		else:
+			combat_move_mode = rng.randi_range(0, 3)
+		strafe_sign = -1.0 if rng.randf() < 0.5 else 1.0
+
+	var desired := global_position
+	match combat_move_mode:
+		0:
+			desired = global_position
+		1:
+			desired = global_position + side * 7.5 * strafe_sign
+		2:
+			desired = target_position + away * (preferred_distance + rng.randf_range(-3.0, 4.0)) + side * 5.0 * strafe_sign
+		_:
+			desired = target_position + away * maxf(11.0, preferred_distance - 5.0)
 
 	if squad_role == "flank_left":
-		desired += side * 13.0
+		desired += side * 8.0
 	elif squad_role == "flank_right":
-		desired -= side * 13.0
-	elif squad_role == "advance":
-		desired = target_position + away * maxf(12.0, preferred_distance - 6.0)
+		desired -= side * 8.0
 	elif squad_role == "suppress":
-		desired = target_position + away * (preferred_distance + 5.0)
+		desired = target_position + away * (preferred_distance + 6.0)
 
 	var move_direction := desired - global_position
 	move_direction.y = 0.0
-	if move_direction.length() > 2.0:
+	if move_direction.length() > 1.4:
 		move_direction = _avoid_obstacle(move_direction.normalized())
-		velocity.x = move_toward(velocity.x, move_direction.x * move_speed, move_speed * 5.0 * delta)
-		velocity.z = move_toward(velocity.z, move_direction.z * move_speed, move_speed * 5.0 * delta)
+		var combat_speed := move_speed * (1.12 if distance > preferred_distance + 10.0 else 0.82)
+		velocity.x = move_toward(velocity.x, move_direction.x * combat_speed, move_speed * 7.0 * delta)
+		velocity.z = move_toward(velocity.z, move_direction.z * combat_speed, move_speed * 7.0 * delta)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, move_speed * 7.0 * delta)
-		velocity.z = move_toward(velocity.z, 0.0, move_speed * 7.0 * delta)
+		velocity.x = move_toward(velocity.x, 0.0, move_speed * 9.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, move_speed * 9.0 * delta)
 
 	var face := target_position - global_position
 	face.y = 0.0
 	if face.length_squared() > 0.1:
 		var desired_yaw := atan2(-face.x, -face.z)
-		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 8.0))
+		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 10.0))
 
 	if distance < engage_distance and fire_cooldown <= 0.0 and _has_line_of_sight(target):
 		_fire_at_target(distance)
 
 func _fire_at_target(distance: float) -> void:
-	fire_cooldown = rng.randf_range(0.42, 0.72)
+	if burst_remaining <= 0:
+		burst_remaining = rng.randi_range(2, 4)
+	burst_remaining -= 1
+	fire_cooldown = rng.randf_range(0.13, 0.22) if burst_remaining > 0 else rng.randf_range(0.72, 1.18)
 	var aim_point := target.global_position + Vector3.UP * 1.05
 	var direction := (aim_point - muzzle.global_position).normalized()
 	var inaccuracy: float = lerpf(0.012, 0.032, clampf(distance / engage_distance, 0.0, 1.0))
@@ -175,6 +257,13 @@ func _fire_at_target(distance: float) -> void:
 	var bolt := BlasterBolt.new()
 	get_tree().current_scene.add_child(bolt)
 	bolt.configure(muzzle.global_position, direction, 185.0, 16.0, self)
+	muzzle_flash_time = 0.045
+	muzzle_flash_mesh.visible = true
+	muzzle_flash_light.visible = true
+	if fire_audio.stream != null:
+		fire_audio.stop()
+		fire_audio.pitch_scale = rng.randf_range(0.94, 1.04)
+		fire_audio.play()
 
 func _patrol_update(delta: float) -> void:
 	var delta_to_target := patrol_target - global_position
@@ -198,16 +287,38 @@ func _choose_patrol_target() -> void:
 func receive_squad_alert(new_target: Node3D) -> void:
 	target = new_target
 
-func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Vector3.ZERO, source = null) -> void:
+func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vector3.ZERO, source = null) -> void:
+	if dead:
+		return
 	if source is Node and (source as Node).is_in_group("enemy"):
 		return
 	health -= amount
+	hit_stun = 0.11
+	visual_root.rotation.x = deg_to_rad(-5.0)
 	if source is Node3D:
 		target = source
 		squad_manager.alert_squad(squad_id, source)
 	if health <= 0.0:
-		squad_manager.member_died(self, squad_id)
-		killed.emit(self)
+		_begin_death(direction)
+
+func _begin_death(direction: Vector3) -> void:
+	dead = true
+	death_timer = 2.2
+	death_roll = -1.0 if rng.randf() < 0.5 else 1.0
+	velocity = Vector3.ZERO
+	collision_layer = 0
+	collision_mask = 0
+	if animation_player != null:
+		animation_player.stop()
+	squad_manager.member_died(self, squad_id)
+	killed.emit(self)
+
+func _update_death(delta: float) -> void:
+	death_timer -= delta
+	visual_root.rotation.z = lerpf(visual_root.rotation.z, death_roll * 1.28, 1.0 - exp(-delta * 7.0))
+	visual_root.rotation.x = lerpf(visual_root.rotation.x, deg_to_rad(12.0), 1.0 - exp(-delta * 5.0))
+	visual_root.position.y = lerpf(visual_root.position.y, -0.22, 1.0 - exp(-delta * 5.0))
+	if death_timer <= 0.0:
 		queue_free()
 
 func _avoid_obstacle(direction: Vector3) -> Vector3:
@@ -227,6 +338,7 @@ func _avoid_obstacle(direction: Vector3) -> Vector3:
 	return (direction * 0.35 + side).normalized()
 
 func _update_animation() -> void:
+	visual_root.rotation.x = lerpf(visual_root.rotation.x, 0.0, 0.22)
 	if animation_player == null:
 		return
 	var planar_speed := Vector2(velocity.x, velocity.z).length()
