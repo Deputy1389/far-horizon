@@ -1,8 +1,8 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "[2026.09.21-07.58.33:365][594]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
-    "sha":  "a4e3f554d17843f24083b60101672220f21658a4",
-    "failedStage":  null,
+    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFrontierWorld.cpp(120,47): error C2445: result type of conditional expression is ambiguous: types \u0027UStaticMesh *\u0027 and \u0027TObjectPtr\u003cUStaticMesh\u003e\u0027 can be converted to multiple common types\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFrontierWorld.cpp(118,9): error C2064: term does not evaluate to a function taking 3 arguments",
+    "sha":  "6922cf51353ce2bebfc8ab43aca9991accc1fa21",
+    "failedStage":  "build",
     "engineVersion":  "5.8",
     "epicTemplate":  {
                          "assetCount":  346,
@@ -69,27 +69,15 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "a4e3f554d178",
-    "status":  "PASS",
+    "shortSha":  "6922cf51353c",
+    "status":  "FAIL",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  6,
-                      "timedOut":  false
-                  },
-                  {
-                      "exitCode":  0,
-                      "name":  "automation",
-                      "durationSeconds":  25.3,
-                      "timedOut":  false
-                  },
-                  {
-                      "exitCode":  0,
-                      "name":  "boot",
-                      "durationSeconds":  18.3,
+                      "durationSeconds":  15.7,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T07:58:52.3262280Z"
+    "testedAtUtc":  "2026-09-21T07:59:34.5980824Z"
 }
