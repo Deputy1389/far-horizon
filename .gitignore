@@ -20,3 +20,13 @@ Saved/
 *.VC.opendb
 *.sln
 
+
+# Local-only Epic UE template assets migrated by tools/Install-Epic-FPS-Foundation.ps1
+Content/FirstPerson/
+Content/Variant_Shooter/
+Content/Characters/
+Content/Weapons/
+Content/LevelPrototyping/
+
+# Local-only Unreal assets imported from the user's SWG installation
+Content/FarHorizon/LocalSWG/
