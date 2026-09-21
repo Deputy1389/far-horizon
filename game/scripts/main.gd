@@ -11,11 +11,21 @@ var strategy: StrategicSim
 var capture_point: CapturePoint
 var hud: DebugHud
 var convoy_proxies: Dictionary = {}
+@onready var startup_overlay: CanvasLayer = $StartupOverlay
+@onready var startup_status: Label = $StartupOverlay/Status
 
 func _ready() -> void:
+	_stage("Installing input map...")
 	_install_input_map()
+	_stage("Creating desert sky and lighting...")
 	_build_environment()
+	await get_tree().process_frame
 	await _build_foundation_world()
+
+func _stage(text: String) -> void:
+	print("FOUNDATION_STAGE " + text)
+	if startup_status != null:
+		startup_status.text = text
 
 func _build_environment() -> void:
 	var environment_node := WorldEnvironment.new()
@@ -54,11 +64,13 @@ func _build_environment() -> void:
 	add_child(second_sun)
 
 func _build_foundation_world() -> void:
+	_stage("Initializing spherical planet coordinates...")
 	floating_origin = FloatingOrigin.new()
 	floating_origin.name = "FloatingOrigin"
 	add_child(floating_origin)
 	floating_origin.configure(6_000_000.0, 11.0, 42.0)
 
+	_stage("Creating first-person controller...")
 	player = FPSController.new()
 	add_child(player)
 	player.global_position = Vector3(0.0, 6.0, 0.0)
@@ -68,6 +80,7 @@ func _build_foundation_world() -> void:
 	# Strategic data owns the meaningful map coordinates. The physical world is
 	# projected from those coordinates instead of duplicating city/base numbers
 	# in the scene bootstrap.
+	_stage("Starting planetary war simulation...")
 	strategy = StrategicSim.new()
 	add_child(strategy)
 	strategy.configure(floating_origin)
@@ -77,6 +90,7 @@ func _build_foundation_world() -> void:
 
 	# Put a real camera/HUD on screen before doing procedural mesh/collision work.
 	# This prevents a long-looking gray window while the first terrain ring builds.
+	_stage("Bringing HUD online...")
 	hud = DebugHud.new()
 	add_child(hud)
 	hud.configure(player, floating_origin, strategy)
@@ -88,6 +102,7 @@ func _build_foundation_world() -> void:
 	var rebel_map: Vector2 = rebel_node["map_position"]
 	var city_map: Vector2 = city_node["map_position"]
 
+	_stage("Generating nearby spherical terrain...")
 	planet = ProceduralPlanet.new()
 	planet.name = "ProceduralPlanet"
 	add_child(planet)
@@ -97,24 +112,30 @@ func _build_foundation_world() -> void:
 	planet.generate_initial()
 	player.global_position = planet.surface_point(rebel_map.x, rebel_map.y) + Vector3.UP * 0.08
 
+	_stage("Building Rebel staging area...")
 	rebel_outpost = RebelOutpost.new()
 	rebel_outpost.name = "RebelOutpost"
 	add_child(rebel_outpost)
 	rebel_outpost.configure(planet, rebel_map)
 
+	_stage("Generating Mos Eisley combat district...")
 	city = CityGenerator.new()
 	city.name = "MosEisleyPrototype"
 	add_child(city)
 	city.configure(planet, city_map)
 
+	_stage("Spawning tactical AI...")
 	squads = SquadManager.new()
 	add_child(squads)
 
+	_stage("Connecting strategic road network...")
 	roads = RoadNetwork.new()
 	add_child(roads)
 	roads.configure(planet, strategy)
 
+	_stage("Materializing Imperial garrison...")
 	_spawn_enemies()
+	_stage("Creating objective and speeder...")
 	_spawn_capture_point()
 	_spawn_speeder(rebel_map)
 
@@ -122,10 +143,13 @@ func _build_foundation_world() -> void:
 		capture_point.progress_changed.connect(hud.set_capture_progress)
 		hud.set_capture_progress(capture_point.progress / maxf(capture_point.capture_seconds, 0.001), false)
 
+	_stage("Finalizing playable foundation...")
 	player.set_physics_process(true)
 	player.died.connect(_respawn_player)
 	strategy.event_logged.emit("Foundation ready. Follow the road south to the Imperial garrison.")
 	print("FOUNDATION_READY chunks=%d enemies=%d" % [planet.chunks.size(), squads.active_member_count()])
+	if startup_overlay != null:
+		startup_overlay.visible = false
 
 func _spawn_enemies() -> void:
 	var positions := city.combat_spawns
