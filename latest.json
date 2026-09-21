@@ -1,24 +1,30 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "[2026.09.21-06.11.22:618][  0]LogDirectoryWatcher: Warning: Failed to begin reading directory changes for C:/Users/paddy/AppData/Local/FarHorizonDevAgent/test-worktree/Content/. Error: The system cannot find the file specified. (0x00000002)\r\n[2026.09.21-06.12.14:006][ 53]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
-    "sha":  "7dd69f435065c3a9e976f5372d73285ccaa53700",
-    "failedStage":  "automation",
+    "diagnostics":  "[2026.09.21-06.18.48:963][584]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
+    "sha":  "89ef1d69d3910183a3c8b66afcfb5328f43f5617",
+    "failedStage":  null,
     "engineVersion":  "5.8",
-    "shortSha":  "7dd69f435065",
-    "status":  "FAIL",
+    "shortSha":  "89ef1d69d391",
+    "status":  "PASS",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  3.1,
+                      "durationSeconds":  7.2,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "automation",
-                      "durationSeconds":  54.9,
+                      "durationSeconds":  28.1,
+                      "timedOut":  false
+                  },
+                  {
+                      "exitCode":  0,
+                      "name":  "boot",
+                      "durationSeconds":  17.2,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T06:12:14.5685308Z"
+    "testedAtUtc":  "2026-09-21T06:19:06.5996635Z"
 }
