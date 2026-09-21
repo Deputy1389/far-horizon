@@ -306,9 +306,14 @@ func _combat_update(delta: float) -> void:
 
 func _fire_at_target(distance: float) -> void:
 	if burst_remaining <= 0:
+		if not squad_manager.request_fire_slot(self):
+			fire_cooldown = rng.randf_range(0.18, 0.34)
+			return
 		burst_remaining = rng.randi_range(2, 4)
 	burst_remaining -= 1
 	fire_cooldown = rng.randf_range(0.13, 0.22) if burst_remaining > 0 else rng.randf_range(0.72, 1.18)
+	if burst_remaining <= 0:
+		squad_manager.release_fire_slot(self)
 	var aim_point := target.global_position + Vector3.UP * 1.05
 	var direction := (aim_point - muzzle.global_position).normalized()
 	var inaccuracy: float = lerpf(0.012, 0.032, clampf(distance / engage_distance, 0.0, 1.0))
@@ -368,6 +373,7 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vec
 
 func _begin_death(direction: Vector3) -> void:
 	dead = true
+	squad_manager.release_fire_slot(self)
 	death_timer = 2.2
 	death_roll = -1.0 if rng.randf() < 0.5 else 1.0
 	velocity = Vector3.ZERO
