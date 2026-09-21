@@ -372,6 +372,7 @@ func _generate_cover() -> void:
 			continue
 		var surface := _surface_local(offset.x, offset.y)
 		var cover := StaticBody3D.new()
+		cover.add_to_group("combat_cover")
 		cover.position = surface
 		add_child(cover)
 
