@@ -109,6 +109,17 @@ AFHFrontierWorld::AFHFrontierWorld()
 
     AntennaInstances =
         CreateInstances(TEXT("Antennas"), CylinderMesh, Metal, false);
+
+    UStaticMesh* LocalVaporator = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Game/FarHorizon/LocalSWG/Models/SM_SWG_MoistureVaporator.SM_SWG_MoistureVaporator"));
+
+    VaporatorInstances =
+        CreateInstances(
+            TEXT("LocalSWGVaporators"),
+            LocalVaporator ? LocalVaporator : CylinderMesh,
+            Metal,
+            true);
 }
 
 UMaterialInterface* AFHFrontierWorld::LoadLocalMaterial(
@@ -597,25 +608,46 @@ void AFHFrontierWorld::BuildOutskirts()
         }
         else
         {
-            AddCylinder(
-                MetalInstances,
-                FVector(X, Y, 700.0f),
-                FVector(420.0f, 420.0f, 1400.0f));
+            UStaticMesh* VaporatorMesh =
+                VaporatorInstances ? VaporatorInstances->GetStaticMesh() : nullptr;
 
-            AddCylinder(
-                AntennaInstances,
-                FVector(X, Y, 2100.0f),
-                FVector(60.0f, 60.0f, 2800.0f));
+            const bool bUsingRealVaporator =
+                VaporatorMesh &&
+                VaporatorMesh != CylinderMesh;
 
-            for (int32 Arm = 0; Arm < 3; ++Arm)
+            if (bUsingRealVaporator)
             {
-                const float ArmYaw = Arm * 120.0f;
-
-                AddBox(
+                VaporatorInstances->AddInstance(
+                    FTransform(
+                        FRotator(
+                            0.0f,
+                            RandomStream.FRandRange(0.0f, 360.0f),
+                            0.0f),
+                        FVector(X, Y, 0.0f),
+                        FVector(RandomStream.FRandRange(0.85f, 1.3f))));
+            }
+            else
+            {
+                AddCylinder(
                     MetalInstances,
-                    FVector(X, Y, 2350.0f),
-                    FVector(1600.0f, 100.0f, 100.0f),
-                    FRotator(0.0f, ArmYaw, 0.0f));
+                    FVector(X, Y, 700.0f),
+                    FVector(420.0f, 420.0f, 1400.0f));
+
+                AddCylinder(
+                    AntennaInstances,
+                    FVector(X, Y, 2100.0f),
+                    FVector(60.0f, 60.0f, 2800.0f));
+
+                for (int32 Arm = 0; Arm < 3; ++Arm)
+                {
+                    const float ArmYaw = Arm * 120.0f;
+
+                    AddBox(
+                        MetalInstances,
+                        FVector(X, Y, 2350.0f),
+                        FVector(1600.0f, 100.0f, 100.0f),
+                        FRotator(0.0f, ArmYaw, 0.0f));
+                }
             }
         }
     }
