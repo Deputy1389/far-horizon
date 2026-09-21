@@ -18,6 +18,7 @@ var damage_overlay := ColorRect.new()
 
 var event_timer := 0.0
 var hit_marker_timer := 0.0
+var kill_marker_timer := 0.0
 var damage_flash_timer := 0.0
 var debug_visible := false
 var controls_label := Label.new()
@@ -132,10 +133,18 @@ func _process(delta: float) -> void:
 	_update_interaction_prompt()
 	event_timer = maxf(0.0, event_timer - delta)
 	hit_marker_timer = maxf(0.0, hit_marker_timer - delta)
+	kill_marker_timer = maxf(0.0, kill_marker_timer - delta)
 	damage_flash_timer = maxf(0.0, damage_flash_timer - delta)
 
-	crosshair.text = "×" if hit_marker_timer > 0.0 else "+"
-	crosshair.modulate = Color(1.0, 0.82, 0.56) if hit_marker_timer > 0.0 else Color.WHITE
+	if kill_marker_timer > 0.0:
+		crosshair.text = "✕"
+		crosshair.modulate = Color(1.0, 0.25, 0.12)
+	elif hit_marker_timer > 0.0:
+		crosshair.text = "×"
+		crosshair.modulate = Color(1.0, 0.82, 0.56)
+	else:
+		crosshair.text = "+"
+		crosshair.modulate = Color.WHITE
 
 	var damage_alpha := clampf(damage_flash_timer / 0.22, 0.0, 1.0) * 0.24
 	damage_overlay.color = Color(0.42, 0.0, 0.0, damage_alpha)
@@ -186,6 +195,11 @@ func _update_interaction_prompt() -> void:
 		nearest_distance = distance
 		prompt = candidate_prompt
 	interaction_label.text = prompt
+
+func confirm_kill() -> void:
+	kill_marker_timer = 0.18
+	hit_marker_timer = 0.0
+
 
 func set_capture_progress(ratio: float, contested: bool) -> void:
 	capture_ratio = clampf(ratio, 0.0, 1.0)
