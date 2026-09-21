@@ -369,9 +369,18 @@ func _avoid_obstacle(direction: Vector3) -> Vector3:
 
 func _update_animation() -> void:
 	visual_root.rotation.x = lerpf(visual_root.rotation.x, 0.0, 0.22)
-	if animation_player == null:
-		return
+	var local_velocity := global_basis.inverse() * velocity
+	var lean := clampf(-local_velocity.x / maxf(move_speed, 0.1), -1.0, 1.0) * 0.07
+	visual_root.rotation.z = lerpf(visual_root.rotation.z, lean, 0.18)
 	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	if animation_player == null:
+		# Fallback motion is intentionally subtle; it prevents a converted model
+		# from looking like a rigid statue if an animation clip fails to import.
+		if planar_speed > 0.25:
+			visual_root.position.y = sin(Time.get_ticks_msec() * 0.012 + float(get_instance_id() % 100)) * 0.025
+		else:
+			visual_root.position.y = lerpf(visual_root.position.y, 0.0, 0.15)
+		return
 	if planar_speed < 0.25:
 		_set_animation("idle")
 		animation_player.speed_scale = 1.0
