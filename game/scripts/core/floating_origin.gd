@@ -30,6 +30,8 @@ func local_position(planet_position: PackedFloat64Array) -> Vector3:
 	return PlanetMath.ecef_to_local(origin_ecef, frame_basis, planet_position)
 
 func _physics_process(_delta: float) -> void:
+	if not is_inside_tree():
+		return
 	if tracked_body == null or not is_instance_valid(tracked_body):
 		return
 	var horizontal := Vector2(tracked_body.global_position.x, tracked_body.global_position.z)
@@ -37,6 +39,8 @@ func _physics_process(_delta: float) -> void:
 		_rebase()
 
 func _rebase() -> void:
+	if not is_inside_tree() or get_tree() == null:
+		return
 	var previous_origin := origin_ecef.duplicate()
 	var old_frame := frame_basis
 	var snapshots: Array[Dictionary] = []
