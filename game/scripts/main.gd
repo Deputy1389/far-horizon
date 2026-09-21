@@ -109,7 +109,8 @@ func _build_foundation_world() -> void:
 	planet.add_dressing_exclusion(rebel_map, 65.0)
 	planet.add_dressing_exclusion(city_map, 390.0)
 	planet.generate_initial()
-	player.global_position = planet.surface_point(rebel_map.x, rebel_map.y) + Vector3.UP * 0.08
+	player.global_position = planet.surface_point(rebel_map.x, rebel_map.y) + Vector3.UP * 0.18
+	print("FOUNDATION_SPAWN player=%s terrain_y=%.3f" % [str(player.global_position), planet.surface_y(player.global_position.x, player.global_position.z)])
 
 	_stage("Building Rebel staging area...")
 	rebel_outpost = RebelOutpost.new()
