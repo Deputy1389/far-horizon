@@ -12,11 +12,9 @@
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
-#include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
 #include "NavMesh/NavMeshBoundsVolume.h"
 #include "NavigationSystem.h"
-#include "UObject/SoftObjectPath.h"
 
 AFHFrontierWorld::AFHFrontierWorld()
     : RandomStream(1389)
@@ -34,19 +32,29 @@ AFHFrontierWorld::AFHFrontierWorld()
         nullptr,
         TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 
+    SphereMesh = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+
     auto CreateInstances = [this](
         const TCHAR* Name,
         UStaticMesh* Mesh,
-        UMaterialInterface* Material)
+        UMaterialInterface* Material,
+        bool bCollision)
     {
         UHierarchicalInstancedStaticMeshComponent* Component =
             CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(Name);
 
-        Component->SetupAttachment(GetRootComponent());
+        Component->SetupAttachment(SceneRoot);
         Component->SetStaticMesh(Mesh);
         Component->SetMobility(EComponentMobility::Movable);
-        Component->SetCollisionProfileName(TEXT("BlockAll"));
-        Component->SetCanEverAffectNavigation(true);
+        Component->SetCollisionProfileName(
+            bCollision ? TEXT("BlockAll") : TEXT("NoCollision"));
+        Component->SetCollisionEnabled(
+            bCollision
+                ? ECollisionEnabled::QueryAndPhysics
+                : ECollisionEnabled::NoCollision);
+        Component->SetCanEverAffectNavigation(bCollision);
         Component->SetCastShadow(true);
 
         if (Material)
@@ -72,14 +80,35 @@ AFHFrontierWorld::AFHFrontierWorld()
     UMaterialInterface* Pad = LoadLocalMaterial(
         TEXT("/Game/FarHorizon/LocalSWG/Materials/M_SWG_Pad.M_SWG_Pad"));
 
-    SandInstances = CreateInstances(TEXT("Sand"), CubeMesh, Sand);
-    RoadInstances = CreateInstances(TEXT("Roads"), CubeMesh, Road);
-    WallInstances = CreateInstances(TEXT("Walls"), CubeMesh, Wall);
-    CapitalWallInstances = CreateInstances(TEXT("CapitalWalls"), CubeMesh, CapitalWall);
-    ConcreteInstances = CreateInstances(TEXT("Concrete"), CubeMesh, Concrete);
-    MetalInstances = CreateInstances(TEXT("Metal"), CubeMesh, Metal);
-    LandingPadInstances = CreateInstances(TEXT("LandingPads"), CylinderMesh, Pad);
-    AntennaInstances = CreateInstances(TEXT("Antennas"), CylinderMesh, Metal);
+    SandInstances =
+        CreateInstances(TEXT("Sand"), CubeMesh, Sand, true);
+
+    DuneInstances =
+        CreateInstances(TEXT("Dunes"), SphereMesh, Sand, false);
+
+    RoadInstances =
+        CreateInstances(TEXT("Roads"), CubeMesh, Road, true);
+
+    WallInstances =
+        CreateInstances(TEXT("Walls"), CubeMesh, Wall, true);
+
+    CapitalWallInstances =
+        CreateInstances(TEXT("CapitalWalls"), CubeMesh, CapitalWall, true);
+
+    ConcreteInstances =
+        CreateInstances(TEXT("Concrete"), CubeMesh, Concrete, true);
+
+    MetalInstances =
+        CreateInstances(TEXT("Metal"), CubeMesh, Metal, true);
+
+    DomeInstances =
+        CreateInstances(TEXT("Domes"), SphereMesh, CapitalWall, false);
+
+    LandingPadInstances =
+        CreateInstances(TEXT("LandingPads"), CylinderMesh, Pad, true);
+
+    AntennaInstances =
+        CreateInstances(TEXT("Antennas"), CylinderMesh, Metal, false);
 }
 
 UMaterialInterface* AFHFrontierWorld::LoadLocalMaterial(
@@ -93,6 +122,7 @@ void AFHFrontierWorld::BeginPlay()
     Super::BeginPlay();
 
     BuildEnvironment();
+    BuildRoadNetwork();
     BuildCity();
     BuildStarport();
     BuildOutskirts();
@@ -103,8 +133,11 @@ void AFHFrontierWorld::BeginPlay()
     UE_LOG(
         LogTemp,
         Display,
-        TEXT("FAR_HORIZON_FRONTIER_READY seed=1389 cityRadius=%.0f"),
-        CityRadius);
+        TEXT("FAR_HORIZON_FRONTIER_READY seed=1389 cityRadiusMeters=%.0f buildings=%d"),
+        CityRadius / 100.0f,
+        WallInstances->GetInstanceCount() +
+            CapitalWallInstances->GetInstanceCount() +
+            ConcreteInstances->GetInstanceCount());
 }
 
 void AFHFrontierWorld::AddBox(
@@ -118,16 +151,14 @@ void AFHFrontierWorld::AddBox(
         return;
     }
 
-    const FVector Scale(
-        SizeCm.X / 100.0f,
-        SizeCm.Y / 100.0f,
-        SizeCm.Z / 100.0f);
-
     Component->AddInstance(
         FTransform(
             Rotation,
             Location,
-            Scale));
+            FVector(
+                SizeCm.X / 100.0f,
+                SizeCm.Y / 100.0f,
+                SizeCm.Z / 100.0f)));
 }
 
 void AFHFrontierWorld::AddCylinder(
@@ -141,147 +172,291 @@ void AFHFrontierWorld::AddCylinder(
         return;
     }
 
-    const FVector Scale(
-        SizeCm.X / 100.0f,
-        SizeCm.Y / 100.0f,
-        SizeCm.Z / 100.0f);
+    Component->AddInstance(
+        FTransform(
+            Rotation,
+            Location,
+            FVector(
+                SizeCm.X / 100.0f,
+                SizeCm.Y / 100.0f,
+                SizeCm.Z / 100.0f)));
+}
+
+void AFHFrontierWorld::AddSphere(
+    UHierarchicalInstancedStaticMeshComponent* Component,
+    const FVector& Location,
+    const FVector& SizeCm,
+    const FRotator& Rotation)
+{
+    if (!Component || !SphereMesh)
+    {
+        return;
+    }
 
     Component->AddInstance(
         FTransform(
             Rotation,
             Location,
-            Scale));
+            FVector(
+                SizeCm.X / 100.0f,
+                SizeCm.Y / 100.0f,
+                SizeCm.Z / 100.0f)));
 }
 
 void AFHFrontierWorld::BuildEnvironment()
 {
-    // A broad desert ground plane. Later planet chunks replace this with
-    // curved terrain, but the gameplay scale and visual language already match
-    // the Far Horizon desert-settlement target.
     AddBox(
         SandInstances,
-        FVector(0.0f, 0.0f, -60.0f),
-        FVector(WorldRadius * 2.0f, WorldRadius * 2.0f, 100.0f));
+        FVector(0.0f, 0.0f, -90.0f),
+        FVector(
+            GroundHalfExtent * 2.0f,
+            GroundHalfExtent * 2.0f,
+            160.0f));
 
-    // Main arterial roads through the settlement.
-    constexpr float RoadWidth = 700.0f;
-    AddBox(
-        RoadInstances,
-        FVector(0.0f, 0.0f, 2.0f),
-        FVector(WorldRadius * 1.6f, RoadWidth, 12.0f));
-
-    AddBox(
-        RoadInstances,
-        FVector(0.0f, 0.0f, 2.0f),
-        FVector(RoadWidth, WorldRadius * 1.6f, 12.0f));
-
-    // Secondary streets form irregular blocks rather than one arena.
-    for (int32 Index = -4; Index <= 4; ++Index)
+    for (int32 Index = 0; Index < 85; ++Index)
     {
-        if (Index == 0)
+        const float Angle =
+            RandomStream.FRandRange(0.0f, UE_TWO_PI);
+
+        const float Radius =
+            RandomStream.FRandRange(
+                CityRadius * 0.75f,
+                GroundHalfExtent * 0.78f);
+
+        const float Diameter =
+            RandomStream.FRandRange(9000.0f, 28000.0f);
+
+        const float Height =
+            RandomStream.FRandRange(500.0f, 1800.0f);
+
+        AddSphere(
+            DuneInstances,
+            FVector(
+                FMath::Cos(Angle) * Radius,
+                FMath::Sin(Angle) * Radius,
+                -Height * 0.26f),
+            FVector(Diameter, Diameter * 0.65f, Height),
+            FRotator(
+                0.0f,
+                RandomStream.FRandRange(0.0f, 360.0f),
+                0.0f));
+    }
+}
+
+void AFHFrontierWorld::BuildRoadNetwork()
+{
+    constexpr float MainRoadWidth = 2600.0f;
+    constexpr float SideRoadWidth = 1200.0f;
+    constexpr float RoadThickness = 18.0f;
+    const float RoadLength = CityRadius * 2.35f;
+
+    AddBox(
+        RoadInstances,
+        FVector(0.0f, 0.0f, 5.0f),
+        FVector(RoadLength, MainRoadWidth, RoadThickness));
+
+    AddBox(
+        RoadInstances,
+        FVector(0.0f, 0.0f, 5.0f),
+        FVector(MainRoadWidth, RoadLength, RoadThickness));
+
+    for (int32 Grid = -7; Grid <= 7; ++Grid)
+    {
+        if (Grid == 0)
         {
             continue;
         }
 
-        const float Offset = Index * 1850.0f;
+        const float Offset = Grid * CityCell;
 
         AddBox(
             RoadInstances,
             FVector(Offset, 0.0f, 4.0f),
-            FVector(300.0f, CityRadius * 1.9f, 10.0f));
+            FVector(SideRoadWidth, RoadLength, RoadThickness));
 
         AddBox(
             RoadInstances,
             FVector(0.0f, Offset, 4.0f),
-            FVector(CityRadius * 1.9f, 300.0f, 10.0f));
+            FVector(RoadLength, SideRoadWidth, RoadThickness));
+    }
+
+    // Two diagonal arterials keep the city from reading as a pure square grid.
+    AddBox(
+        RoadInstances,
+        FVector(0.0f, 0.0f, 7.0f),
+        FVector(RoadLength * 0.94f, 1500.0f, RoadThickness),
+        FRotator(0.0f, 31.0f, 0.0f));
+
+    AddBox(
+        RoadInstances,
+        FVector(0.0f, 0.0f, 7.0f),
+        FVector(RoadLength * 0.86f, 1450.0f, RoadThickness),
+        FRotator(0.0f, -37.0f, 0.0f));
+}
+
+void AFHFrontierWorld::BuildBuilding(
+    const FVector& Location,
+    float Width,
+    float Depth,
+    float Height,
+    float Yaw,
+    float Density)
+{
+    UHierarchicalInstancedStaticMeshComponent* Facade =
+        Density > 0.58f && RandomStream.FRand() > 0.48f
+            ? CapitalWallInstances
+            : WallInstances;
+
+    AddBox(
+        Facade,
+        FVector(Location.X, Location.Y, Height * 0.5f),
+        FVector(Width, Depth, Height),
+        FRotator(0.0f, Yaw, 0.0f));
+
+    const bool bRoundRoof =
+        RandomStream.FRand() < (0.30f + Density * 0.18f);
+
+    if (bRoundRoof)
+    {
+        const float DomeDiameter =
+            FMath::Min(Width, Depth) * RandomStream.FRandRange(0.55f, 0.88f);
+
+        AddSphere(
+            DomeInstances,
+            FVector(
+                Location.X,
+                Location.Y,
+                Height + DomeDiameter * 0.12f),
+            FVector(
+                DomeDiameter,
+                DomeDiameter,
+                DomeDiameter * 0.52f));
+    }
+    else if (RandomStream.FRand() > 0.28f)
+    {
+        const float UpperHeight =
+            RandomStream.FRandRange(260.0f, 900.0f) *
+            (1.0f + Density);
+
+        AddBox(
+            ConcreteInstances,
+            FVector(
+                Location.X + RandomStream.FRandRange(-Width * 0.12f, Width * 0.12f),
+                Location.Y + RandomStream.FRandRange(-Depth * 0.12f, Depth * 0.12f),
+                Height + UpperHeight * 0.5f),
+            FVector(
+                Width * RandomStream.FRandRange(0.34f, 0.68f),
+                Depth * RandomStream.FRandRange(0.34f, 0.68f),
+                UpperHeight),
+            FRotator(0.0f, Yaw, 0.0f));
+    }
+
+    // Dark metal doorway / service panel.
+    const float DoorHeight = FMath::Min(360.0f, Height * 0.42f);
+    AddBox(
+        MetalInstances,
+        FVector(
+            Location.X + Width * 0.50f,
+            Location.Y,
+            DoorHeight * 0.5f),
+        FVector(24.0f, 180.0f, DoorHeight),
+        FRotator(0.0f, Yaw, 0.0f));
+
+    // Sun shade / awning.
+    if (RandomStream.FRand() > 0.48f)
+    {
+        AddBox(
+            MetalInstances,
+            FVector(
+                Location.X + Width * 0.52f,
+                Location.Y + RandomStream.FRandRange(-Depth * 0.22f, Depth * 0.22f),
+                DoorHeight + 85.0f),
+            FVector(260.0f, 420.0f, 24.0f),
+            FRotator(0.0f, Yaw, 0.0f));
+    }
+
+    if (RandomStream.FRand() > 0.58f)
+    {
+        AddCylinder(
+            AntennaInstances,
+            FVector(
+                Location.X + RandomStream.FRandRange(-Width * 0.25f, Width * 0.25f),
+                Location.Y + RandomStream.FRandRange(-Depth * 0.25f, Depth * 0.25f),
+                Height + RandomStream.FRandRange(500.0f, 1400.0f)),
+            FVector(34.0f, 34.0f, RandomStream.FRandRange(900.0f, 2400.0f)));
     }
 }
 
 void AFHFrontierWorld::BuildCity()
 {
-    constexpr float Cell = 1850.0f;
-
-    for (int32 GridX = -5; GridX <= 5; ++GridX)
+    for (int32 GridX = -8; GridX <= 8; ++GridX)
     {
-        for (int32 GridY = -5; GridY <= 5; ++GridY)
+        for (int32 GridY = -8; GridY <= 8; ++GridY)
         {
             const FVector2D CellCenter(
-                GridX * Cell,
-                GridY * Cell);
+                GridX * CityCell,
+                GridY * CityCell);
 
             const float Radius = CellCenter.Size();
-            if (Radius > CityRadius || Radius < 2200.0f)
+
+            if (Radius > CityRadius || Radius < 35000.0f)
             {
                 continue;
             }
 
             const float Density =
-                FMath::Clamp(1.15f - Radius / CityRadius, 0.18f, 0.95f);
+                FMath::Clamp(
+                    1.12f - Radius / CityRadius,
+                    0.16f,
+                    0.94f);
 
             const int32 BuildingCount =
                 FMath::Clamp(
-                    FMath::RoundToInt(2.0f + Density * 7.0f + RandomStream.FRandRange(0.0f, 2.0f)),
+                    FMath::RoundToInt(
+                        2.0f +
+                        Density * 7.0f +
+                        RandomStream.FRandRange(0.0f, 3.0f)),
                     2,
-                    10);
+                    11);
 
-            for (int32 BuildingIndex = 0; BuildingIndex < BuildingCount; ++BuildingIndex)
+            for (int32 BuildingIndex = 0;
+                 BuildingIndex < BuildingCount;
+                 ++BuildingIndex)
             {
                 const float X =
-                    CellCenter.X + RandomStream.FRandRange(-620.0f, 620.0f);
+                    CellCenter.X +
+                    RandomStream.FRandRange(-4900.0f, 4900.0f);
 
                 const float Y =
-                    CellCenter.Y + RandomStream.FRandRange(-620.0f, 620.0f);
+                    CellCenter.Y +
+                    RandomStream.FRandRange(-4900.0f, 4900.0f);
+
+                const FVector2D Candidate(X, Y);
+                if (Candidate.Size() < 34000.0f)
+                {
+                    continue;
+                }
 
                 const float Width =
-                    RandomStream.FRandRange(550.0f, 1250.0f);
+                    RandomStream.FRandRange(1800.0f, 5200.0f);
 
                 const float Depth =
-                    RandomStream.FRandRange(500.0f, 1200.0f);
+                    RandomStream.FRandRange(1700.0f, 4800.0f);
+
+                const float BaseHeight =
+                    RandomStream.FRandRange(650.0f, 1900.0f);
 
                 const float Height =
-                    RandomStream.FRandRange(380.0f, 850.0f) *
-                    (1.0f + Density * 1.9f);
+                    BaseHeight *
+                    (1.0f + Density * RandomStream.FRandRange(0.25f, 1.55f));
 
-                UHierarchicalInstancedStaticMeshComponent* Facade =
-                    Density > 0.63f && RandomStream.FRand() > 0.55f
-                        ? CapitalWallInstances
-                        : WallInstances;
-
-                const float Yaw =
-                    RandomStream.FRandRange(-7.0f, 7.0f);
-
-                AddBox(
-                    Facade,
-                    FVector(X, Y, Height * 0.5f),
-                    FVector(Width, Depth, Height),
-                    FRotator(0.0f, Yaw, 0.0f));
-
-                // Stepped desert-city roofline.
-                if (RandomStream.FRand() > 0.34f)
-                {
-                    const float UpperHeight =
-                        RandomStream.FRandRange(180.0f, 420.0f);
-
-                    AddBox(
-                        ConcreteInstances,
-                        FVector(
-                            X + RandomStream.FRandRange(-Width * 0.12f, Width * 0.12f),
-                            Y + RandomStream.FRandRange(-Depth * 0.12f, Depth * 0.12f),
-                            Height + UpperHeight * 0.5f),
-                        FVector(
-                            Width * RandomStream.FRandRange(0.38f, 0.7f),
-                            Depth * RandomStream.FRandRange(0.38f, 0.7f),
-                            UpperHeight),
-                        FRotator(0.0f, Yaw, 0.0f));
-                }
-
-                if (RandomStream.FRand() > 0.72f)
-                {
-                    AddCylinder(
-                        AntennaInstances,
-                        FVector(X, Y, Height + 420.0f),
-                        FVector(35.0f, 35.0f, 800.0f));
-                }
+                BuildBuilding(
+                    FVector(X, Y, 0.0f),
+                    Width,
+                    Depth,
+                    Height,
+                    RandomStream.FRandRange(-9.0f, 9.0f),
+                    Density);
             }
         }
     }
@@ -289,106 +464,188 @@ void AFHFrontierWorld::BuildCity()
 
 void AFHFrontierWorld::BuildStarport()
 {
-    // Monumental center visible from much of the city.
+    // Central concourse and terminal complex.
     AddCylinder(
         LandingPadInstances,
-        FVector(0.0f, 0.0f, 35.0f),
-        FVector(5200.0f, 5200.0f, 70.0f));
+        FVector(0.0f, 0.0f, 45.0f),
+        FVector(26000.0f, 26000.0f, 90.0f));
 
-    AddBox(
+    AddCylinder(
         CapitalWallInstances,
-        FVector(0.0f, 0.0f, 850.0f),
-        FVector(3200.0f, 3200.0f, 1700.0f));
+        FVector(0.0f, 0.0f, 1700.0f),
+        FVector(15000.0f, 15000.0f, 3400.0f));
 
-    AddBox(
+    AddSphere(
+        DomeInstances,
+        FVector(0.0f, 0.0f, 3600.0f),
+        FVector(13000.0f, 13000.0f, 6500.0f));
+
+    AddCylinder(
         MetalInstances,
-        FVector(0.0f, 0.0f, 2150.0f),
-        FVector(1250.0f, 1250.0f, 900.0f));
+        FVector(0.0f, 0.0f, 6100.0f),
+        FVector(3200.0f, 3200.0f, 5000.0f));
 
     AddCylinder(
         AntennaInstances,
-        FVector(0.0f, 0.0f, 3450.0f),
-        FVector(140.0f, 140.0f, 1700.0f));
+        FVector(0.0f, 0.0f, 10200.0f),
+        FVector(180.0f, 180.0f, 3200.0f));
 
-    for (int32 PadIndex = 0; PadIndex < 8; ++PadIndex)
+    for (int32 HangarIndex = 0; HangarIndex < 6; ++HangarIndex)
     {
         const float Angle =
-            static_cast<float>(PadIndex) / 8.0f * UE_TWO_PI;
+            static_cast<float>(HangarIndex) / 6.0f * UE_TWO_PI;
+
+        const FVector HangarLocation(
+            FMath::Cos(Angle) * 21000.0f,
+            FMath::Sin(Angle) * 21000.0f,
+            1150.0f);
+
+        AddBox(
+            CapitalWallInstances,
+            HangarLocation,
+            FVector(7200.0f, 4800.0f, 2300.0f),
+            FRotator(0.0f, FMath::RadiansToDegrees(Angle) + 90.0f, 0.0f));
+
+        AddSphere(
+            DomeInstances,
+            HangarLocation + FVector(0.0f, 0.0f, 1450.0f),
+            FVector(6200.0f, 4300.0f, 2100.0f),
+            FRotator(0.0f, FMath::RadiansToDegrees(Angle) + 90.0f, 0.0f));
+    }
+
+    for (int32 PadIndex = 0; PadIndex < 10; ++PadIndex)
+    {
+        const float Angle =
+            static_cast<float>(PadIndex) / 10.0f * UE_TWO_PI;
 
         const float Radius =
-            PadIndex % 2 == 0 ? 5200.0f : 6500.0f;
+            PadIndex % 2 == 0 ? 43000.0f : 52000.0f;
+
+        const float Yaw =
+            FMath::RadiansToDegrees(Angle);
 
         const FVector PadLocation(
             FMath::Cos(Angle) * Radius,
             FMath::Sin(Angle) * Radius,
-            18.0f);
+            25.0f);
 
         AddCylinder(
             LandingPadInstances,
             PadLocation,
-            FVector(2200.0f, 2200.0f, 36.0f));
+            FVector(10500.0f, 10500.0f, 50.0f));
 
-        // Readable grounded ship proxy: fuselage + wings + tail. These are
-        // placeholders only until the local SWG mesh importer supplies real
-        // converted ships.
-        AddBox(
+        // Large readable parked-ship silhouette.
+        AddCylinder(
             MetalInstances,
-            PadLocation + FVector(0.0f, 0.0f, 260.0f),
-            FVector(1250.0f, 320.0f, 260.0f),
-            FRotator(0.0f, FMath::RadiansToDegrees(Angle), 0.0f));
+            PadLocation + FVector(0.0f, 0.0f, 950.0f),
+            FVector(900.0f, 900.0f, 5200.0f),
+            FRotator(0.0f, Yaw, 90.0f));
 
         AddBox(
             MetalInstances,
-            PadLocation + FVector(0.0f, 0.0f, 245.0f),
-            FVector(420.0f, 1350.0f, 80.0f),
-            FRotator(0.0f, FMath::RadiansToDegrees(Angle), 0.0f));
+            PadLocation + FVector(0.0f, 0.0f, 850.0f),
+            FVector(1700.0f, 7200.0f, 220.0f),
+            FRotator(0.0f, Yaw, 0.0f));
+
+        AddSphere(
+            DomeInstances,
+            PadLocation + FVector(1700.0f, 0.0f, 1180.0f),
+            FVector(1500.0f, 1100.0f, 900.0f),
+            FRotator(0.0f, Yaw, 0.0f));
 
         AddBox(
             MetalInstances,
-            PadLocation + FVector(-430.0f, 0.0f, 480.0f),
-            FVector(180.0f, 80.0f, 520.0f),
-            FRotator(0.0f, FMath::RadiansToDegrees(Angle), 0.0f));
+            PadLocation + FVector(-2100.0f, 0.0f, 1650.0f),
+            FVector(850.0f, 260.0f, 1900.0f),
+            FRotator(0.0f, Yaw, 0.0f));
     }
 }
 
 void AFHFrontierWorld::BuildOutskirts()
 {
-    for (int32 Index = 0; Index < 130; ++Index)
+    for (int32 Index = 0; Index < 190; ++Index)
     {
         const float Angle =
             RandomStream.FRandRange(0.0f, UE_TWO_PI);
 
         const float Radius =
-            RandomStream.FRandRange(CityRadius + 1000.0f, WorldRadius * 0.88f);
+            RandomStream.FRandRange(
+                CityRadius + 10000.0f,
+                260000.0f);
 
         const float X = FMath::Cos(Angle) * Radius;
         const float Y = FMath::Sin(Angle) * Radius;
 
-        if (RandomStream.FRand() < 0.58f)
+        if (RandomStream.FRand() < 0.56f)
         {
-            const float Width = RandomStream.FRandRange(400.0f, 900.0f);
-            const float Depth = RandomStream.FRandRange(380.0f, 950.0f);
-            const float Height = RandomStream.FRandRange(300.0f, 700.0f);
+            const float Width =
+                RandomStream.FRandRange(1400.0f, 4200.0f);
 
-            AddBox(
-                WallInstances,
-                FVector(X, Y, Height * 0.5f),
-                FVector(Width, Depth, Height),
-                FRotator(0.0f, RandomStream.FRandRange(0.0f, 360.0f), 0.0f));
+            const float Depth =
+                RandomStream.FRandRange(1400.0f, 4200.0f);
+
+            const float Height =
+                RandomStream.FRandRange(500.0f, 1600.0f);
+
+            BuildBuilding(
+                FVector(X, Y, 0.0f),
+                Width,
+                Depth,
+                Height,
+                RandomStream.FRandRange(0.0f, 360.0f),
+                0.12f);
         }
         else
         {
-            // Moisture-vaporator-like silhouette.
             AddCylinder(
                 MetalInstances,
-                FVector(X, Y, 240.0f),
-                FVector(150.0f, 150.0f, 480.0f));
+                FVector(X, Y, 700.0f),
+                FVector(420.0f, 420.0f, 1400.0f));
 
             AddCylinder(
                 AntennaInstances,
-                FVector(X, Y, 610.0f),
-                FVector(40.0f, 40.0f, 740.0f));
+                FVector(X, Y, 2100.0f),
+                FVector(60.0f, 60.0f, 2800.0f));
+
+            for (int32 Arm = 0; Arm < 3; ++Arm)
+            {
+                const float ArmYaw = Arm * 120.0f;
+
+                AddBox(
+                    MetalInstances,
+                    FVector(X, Y, 2350.0f),
+                    FVector(1600.0f, 100.0f, 100.0f),
+                    FRotator(0.0f, ArmYaw, 0.0f));
+            }
         }
+    }
+
+    // Distant rock spires / mesas for a readable desert horizon.
+    for (int32 Index = 0; Index < 55; ++Index)
+    {
+        const float Angle =
+            RandomStream.FRandRange(0.0f, UE_TWO_PI);
+
+        const float Radius =
+            RandomStream.FRandRange(290000.0f, 520000.0f);
+
+        const float Height =
+            RandomStream.FRandRange(2600.0f, 11000.0f);
+
+        AddCylinder(
+            ConcreteInstances,
+            FVector(
+                FMath::Cos(Angle) * Radius,
+                FMath::Sin(Angle) * Radius,
+                Height * 0.5f),
+            FVector(
+                RandomStream.FRandRange(1600.0f, 6000.0f),
+                RandomStream.FRandRange(1600.0f, 6000.0f),
+                Height),
+            FRotator(
+                RandomStream.FRandRange(-8.0f, 8.0f),
+                RandomStream.FRandRange(0.0f, 360.0f),
+                RandomStream.FRandRange(-8.0f, 8.0f)));
     }
 }
 
@@ -401,7 +658,9 @@ void AFHFrontierWorld::BuildLighting()
     }
 
     USkyAtmosphereComponent* Atmosphere =
-        NewObject<USkyAtmosphereComponent>(this, TEXT("FrontierSkyAtmosphere"));
+        NewObject<USkyAtmosphereComponent>(
+            this,
+            TEXT("FrontierSkyAtmosphere"));
 
     if (Atmosphere)
     {
@@ -409,9 +668,10 @@ void AFHFrontierWorld::BuildLighting()
         Atmosphere->RegisterComponent();
     }
 
-    ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
-        FVector::ZeroVector,
-        FRotator(-26.0f, -38.0f, 0.0f));
+    ADirectionalLight* Sun =
+        World->SpawnActor<ADirectionalLight>(
+            FVector::ZeroVector,
+            FRotator(-24.0f, -36.0f, 0.0f));
 
     if (Sun)
     {
@@ -419,11 +679,12 @@ void AFHFrontierWorld::BuildLighting()
             Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
         {
             SunComponent->SetMobility(EComponentMobility::Movable);
-            SunComponent->SetIntensity(8.4f);
-            SunComponent->SetLightColor(FLinearColor(1.0f, 0.78f, 0.55f));
+            SunComponent->SetIntensity(8.0f);
+            SunComponent->SetLightColor(
+                FLinearColor(1.0f, 0.76f, 0.52f));
             SunComponent->SetAtmosphereSunLight(true);
             SunComponent->SetAtmosphereSunLightIndex(0);
-            SunComponent->SetDynamicShadowDistanceMovableLight(30000.0f);
+            SunComponent->SetDynamicShadowDistanceMovableLight(180000.0f);
         }
     }
 
@@ -431,7 +692,7 @@ void AFHFrontierWorld::BuildLighting()
     if (Sky && Sky->GetLightComponent())
     {
         Sky->GetLightComponent()->SetMobility(EComponentMobility::Movable);
-        Sky->GetLightComponent()->SetIntensity(0.72f);
+        Sky->GetLightComponent()->SetIntensity(0.78f);
         Sky->GetLightComponent()->SetRealTimeCaptureEnabled(true);
     }
 
@@ -441,9 +702,9 @@ void AFHFrontierWorld::BuildLighting()
     if (Fog && Fog->GetComponent())
     {
         Fog->GetComponent()->SetMobility(EComponentMobility::Movable);
-        Fog->GetComponent()->SetFogDensity(0.0038f);
-        Fog->GetComponent()->SetFogHeightFalloff(0.21f);
-        Fog->GetComponent()->SetStartDistance(4500.0f);
+        Fog->GetComponent()->SetFogDensity(0.0022f);
+        Fog->GetComponent()->SetFogHeightFalloff(0.16f);
+        Fog->GetComponent()->SetStartDistance(18000.0f);
         Fog->GetComponent()->SetVolumetricFog(true);
     }
 }
@@ -462,7 +723,7 @@ void AFHFrontierWorld::BuildNavigation()
 
     ANavMeshBoundsVolume* NavBounds =
         World->SpawnActor<ANavMeshBoundsVolume>(
-            FVector(0.0f, 0.0f, 1200.0f),
+            FVector(0.0f, 0.0f, 3000.0f),
             FRotator::ZeroRotator,
             Params);
 
@@ -472,10 +733,7 @@ void AFHFrontierWorld::BuildNavigation()
     }
 
     NavBounds->SetActorScale3D(
-        FVector(
-            WorldRadius / 100.0f,
-            WorldRadius / 100.0f,
-            40.0f));
+        FVector(700.0f, 700.0f, 30.0f));
 
     if (UNavigationSystemV1* Navigation =
         FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
@@ -492,41 +750,15 @@ void AFHFrontierWorld::SpawnCombatPopulation()
         return;
     }
 
-    const FSoftClassPath EpicNpcPath(
-        TEXT("/Game/Variant_Shooter/Blueprints/AI/BP_ShooterNPC.BP_ShooterNPC_C"));
-
-    UClass* NpcClass = EpicNpcPath.TryLoadClass<APawn>();
-    if (!NpcClass)
-    {
-        NpcClass = AFHEnemyCharacter::StaticClass();
-    }
-
-    // The Epic shooter character acquires weapons through its own proven
-    // pickup/weapon system. Put a rifle directly on the approach from the
-    // player spawn so the first playtest immediately exercises that path.
-    const FSoftClassPath EpicRiflePath(
-        TEXT("/Game/Variant_Shooter/Blueprints/Pickups/Weapons/BP_ShooterWeapon_Rifle.BP_ShooterWeapon_Rifle_C"));
-
-    if (UClass* RifleClass = EpicRiflePath.TryLoadClass<AActor>())
-    {
-        FActorSpawnParameters RifleParams;
-        RifleParams.SpawnCollisionHandlingOverride =
-            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-        World->SpawnActor<AActor>(
-            RifleClass,
-            FVector(-7450.0f, -6550.0f, 120.0f),
-            FRotator(0.0f, 42.0f, 0.0f),
-            RifleParams);
-    }
-
     const TArray<FVector> SpawnPoints = {
-        FVector(5600.0f, 1800.0f, 120.0f),
-        FVector(4200.0f, -2700.0f, 120.0f),
-        FVector(-3600.0f, 3300.0f, 120.0f),
-        FVector(-5200.0f, -1600.0f, 120.0f),
-        FVector(1200.0f, 6100.0f, 120.0f),
-        FVector(-1400.0f, -6000.0f, 120.0f),
+        FVector(-93000.0f, -64000.0f, 120.0f),
+        FVector(-66000.0f, -36000.0f, 120.0f),
+        FVector(-21000.0f, -71000.0f, 120.0f),
+        FVector(28000.0f, -54000.0f, 120.0f),
+        FVector(69000.0f, -22000.0f, 120.0f),
+        FVector(81000.0f, 39000.0f, 120.0f),
+        FVector(35000.0f, 76000.0f, 120.0f),
+        FVector(-52000.0f, 69000.0f, 120.0f)
     };
 
     FActorSpawnParameters Params;
@@ -535,8 +767,7 @@ void AFHFrontierWorld::SpawnCombatPopulation()
 
     for (const FVector& SpawnPoint : SpawnPoints)
     {
-        World->SpawnActor<APawn>(
-            NpcClass,
+        World->SpawnActor<AFHEnemyCharacter>(
             SpawnPoint,
             FRotator::ZeroRotator,
             Params);
