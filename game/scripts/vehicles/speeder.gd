@@ -2,12 +2,12 @@ class_name Speeder
 extends CharacterBody3D
 
 @export var hover_height := 1.35
-@export var acceleration := 30.0
-@export var reverse_acceleration := 15.0
-@export var max_speed := 44.0
-@export var max_reverse_speed := 12.0
-@export var yaw_rate := 1.65
-@export var lateral_grip := 3.0
+@export var acceleration := 34.0
+@export var reverse_acceleration := 20.0
+@export var max_speed := 38.0
+@export var max_reverse_speed := 10.0
+@export var yaw_rate := 2.55
+@export var lateral_grip := 9.0
 
 var driver: FPSController
 var gravity := 18.0
@@ -98,37 +98,50 @@ func _physics_process(delta: float) -> void:
 
 	var forward := -global_basis.z
 	var right := global_basis.x
-	var forward_speed := velocity.dot(forward)
-	var lateral_speed := velocity.dot(right)
+	var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
+	var forward_speed := horizontal_velocity.dot(forward)
 
 	if throttle > 0.0:
 		forward_speed = move_toward(forward_speed, max_speed, acceleration * throttle * delta)
 	elif throttle < 0.0:
 		forward_speed = move_toward(forward_speed, -max_reverse_speed, reverse_acceleration * -throttle * delta)
 	else:
-		forward_speed = move_toward(forward_speed, 0.0, 6.0 * delta)
+		# Hover bikes should coast a little instead of feeling like a car with
+		# strong engine braking.
+		forward_speed = move_toward(forward_speed, 0.0, 4.0 * delta)
 
-	lateral_speed = move_toward(lateral_speed, 0.0, lateral_grip * delta * maxf(1.0, absf(lateral_speed)))
 	var speed_ratio := clampf(absf(forward_speed) / maxf(max_speed, 0.1), 0.0, 1.0)
-	var steering_authority := lerpf(1.0, 0.45, speed_ratio)
 	if absf(steer) > 0.001:
-		rotate_y(-steer * yaw_rate * steering_authority * delta * signf(forward_speed if absf(forward_speed) > 0.5 else 1.0))
-		forward = -global_basis.z
-		right = global_basis.x
+		# Keep substantial authority at speed and even allow useful low-speed
+		# pivoting. The previous setup reduced yaw while preserving old velocity,
+		# which made the bike feel like a boat.
+		var steering_authority := lerpf(1.15, 0.72, speed_ratio)
+		var drive_sign := signf(forward_speed) if absf(forward_speed) > 0.4 else 1.0
+		rotate_y(-steer * yaw_rate * steering_authority * delta * drive_sign)
 
-	velocity.x = (forward * forward_speed + right * lateral_speed).x
-	velocity.z = (forward * forward_speed + right * lateral_speed).z
+	forward = -global_basis.z
+	right = global_basis.x
+
+	# Rapidly realign momentum toward the bike's new heading while retaining a
+	# small amount of hovercraft drift. This is the core arcade handling change.
+	var desired_horizontal := forward * forward_speed
+	var grip_blend := 1.0 - exp(-lateral_grip * delta)
+	horizontal_velocity = horizontal_velocity.lerp(desired_horizontal, grip_blend)
+	if absf(forward_speed) < 0.2 and absf(throttle) < 0.01:
+		horizontal_velocity = horizontal_velocity.lerp(Vector3.ZERO, 1.0 - exp(-5.0 * delta))
+
+	velocity.x = horizontal_velocity.x
+	velocity.z = horizontal_velocity.z
 	_update_hover(delta)
-
 	move_and_slide()
 
 	_update_engine_audio(speed_ratio)
-	var target_bank: float = -steer * speed_ratio * 0.28
-	bank = lerpf(bank, target_bank, 1.0 - exp(-delta * 7.0))
+	var target_bank: float = -steer * speed_ratio * 0.22
+	bank = lerpf(bank, target_bank, 1.0 - exp(-delta * 8.5))
 	visual.rotation.z = bank
 	var terrain_pitch := _terrain_pitch()
-	var target_pitch := terrain_pitch - throttle * 0.035
-	visual.rotation.x = lerpf(visual.rotation.x, target_pitch, 1.0 - exp(-delta * 6.0))
+	var target_pitch := terrain_pitch - throttle * 0.028
+	visual.rotation.x = lerpf(visual.rotation.x, target_pitch, 1.0 - exp(-delta * 7.0))
 
 func _update_hover(delta: float) -> void:
 	var from := global_position + Vector3.UP * 2.2
