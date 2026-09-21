@@ -389,7 +389,8 @@ function Get-FHEpicTemplateInventory {
         return @{
             available = $false
             assetCount = 0
-            highlights = @()
+            projectFiles = @()
+            assets = @()
         }
     }
 
@@ -398,14 +399,18 @@ function Get-FHEpicTemplateInventory {
         $_.FullName.Substring($contentRoot.Length).TrimStart("\", "/") -replace "\\", "/"
     })
 
-    $highlights = @($relative | Where-Object {
-        $_ -match "(?i)(mannequin|character|weapon|rifle|pistol|shooter|enemy|state.?tree|eqs|behavior|anim|montage|aim|fire|reload)"
-    } | Sort-Object | Select-Object -First 300)
+    $interestingAssets = @($relative | Where-Object {
+        $_ -notmatch "^__External(Actors|Objects)__/"
+    } | Sort-Object | Select-Object -First 400)
+
+    $templateRoot = Split-Path -Parent $contentRoot
+    $projectFiles = @(Get-ChildItem -Path $templateRoot -File -Filter "*.uproject" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
 
     return @{
         available = $true
         assetCount = $relative.Count
-        highlights = $highlights
+        projectFiles = $projectFiles
+        assets = $interestingAssets
     }
 }
 
