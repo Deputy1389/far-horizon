@@ -232,10 +232,13 @@ func _update_animation() -> void:
 	var planar_speed := Vector2(velocity.x, velocity.z).length()
 	if planar_speed < 0.25:
 		_set_animation("idle")
+		animation_player.speed_scale = 1.0
 	elif target != null and is_instance_valid(target):
 		_set_animation("run")
+		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed, 0.1), 0.8, 1.25)
 	else:
 		_set_animation("walk")
+		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed * 0.55, 0.1), 0.75, 1.2)
 
 func _set_animation(requested: String) -> void:
 	if animation_player == null or active_animation == requested:
@@ -248,5 +251,11 @@ func _set_animation(requested: String) -> void:
 				break
 	if not animation_player.has_animation(selected):
 		return
+	var clip := animation_player.get_animation(selected)
+	if clip != null:
+		clip.loop_mode = Animation.LOOP_LINEAR
 	active_animation = requested
-	animation_player.play(selected, 0.15)
+	animation_player.play(selected, 0.12)
+	if clip != null and clip.length > 0.2:
+		# Desynchronize squads so they do not all march in the same frame.
+		animation_player.seek(rng.randf_range(0.0, clip.length), true)
