@@ -19,6 +19,7 @@ var heat := 0.0
 var overheated := false
 var motion_time := 0.0
 var last_aiming := false
+var aim_blend := 0.0
 
 var viewmodel := Node3D.new()
 var arms_root := Node3D.new()
@@ -204,11 +205,16 @@ func _process(delta: float) -> void:
 
 	aiming = enabled and Input.is_action_pressed("aim")
 	var scoped_ads := aiming and current_index == 1
-	scope_layer.visible = scoped_ads
-	arms_root.visible = enabled and not scoped_ads
+	var target_aim_blend := 1.0 if aiming else 0.0
+	aim_blend = lerpf(aim_blend, target_aim_blend, 1.0 - exp(-delta * 12.0))
+	scope_layer.visible = current_index == 1 and aim_blend > 0.01
+	scope_rect.modulate.a = smoothstep(0.52, 0.96, aim_blend) if current_index == 1 else 0.0
+
+	var hide_viewmodel_for_scope := current_index == 1 and aim_blend > 0.82
+	arms_root.visible = enabled and not hide_viewmodel_for_scope
 	if imported_weapon != null and is_instance_valid(imported_weapon):
-		imported_weapon.visible = enabled and not scoped_ads
-	weapon_mesh.visible = enabled and imported_weapon == null and not scoped_ads
+		imported_weapon.visible = enabled and not hide_viewmodel_for_scope
+	weapon_mesh.visible = enabled and imported_weapon == null and not hide_viewmodel_for_scope
 	if aiming != last_aiming:
 		last_aiming = aiming
 		aiming_changed.emit(aiming, scoped_ads)
@@ -221,16 +227,18 @@ func _process(delta: float) -> void:
 		and planar_speed > 7.0
 		and not Input.is_action_pressed("fire")
 	)
-	var target_fov := weapon.ads_fov if aiming else (base_fov + 3.0 if sprint_presented else base_fov)
-	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 15.0))
+	var hip_fov := base_fov + 3.0 if sprint_presented else base_fov
+	var target_fov := lerpf(hip_fov, weapon.ads_fov, aim_blend)
+	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 16.0))
 
 	viewmodel_kick = lerpf(viewmodel_kick, 0.0, 1.0 - exp(-delta * 18.0))
 	viewmodel_recoil_pitch = lerpf(viewmodel_recoil_pitch, 0.0, 1.0 - exp(-delta * 17.0))
 	viewmodel_recoil_yaw = lerpf(viewmodel_recoil_yaw, 0.0, 1.0 - exp(-delta * 19.0))
 	motion_time += delta * (2.1 + planar_speed * 0.85)
-	var target_offset := weapon.ads_offset if aiming else weapon.viewmodel_offset
-	if scoped_ads:
-		target_offset = weapon.viewmodel_offset + Vector3(0.0, -0.08, 0.05)
+	var target_offset := weapon.viewmodel_offset.lerp(weapon.ads_offset, aim_blend)
+	if current_index == 1:
+		var pre_scope_offset := weapon.viewmodel_offset + Vector3(0.0, -0.045, -0.015)
+		target_offset = weapon.viewmodel_offset.lerp(pre_scope_offset, aim_blend)
 	var sway_amount := 0.003 if aiming else 0.008
 	target_offset += Vector3(
 		sin(motion_time) * sway_amount,
