@@ -199,7 +199,7 @@ func _process(delta: float) -> void:
 	scope_rect.modulate.a = smoothstep(0.52, 0.96, aim_blend) if current_index == 1 else 0.0
 
 	var hide_viewmodel_for_scope := current_index == 1 and aim_blend > 0.82
-	arms_root.visible = enabled and not hide_viewmodel_for_scope
+	arms_root.visible = false
 	if imported_weapon != null and is_instance_valid(imported_weapon):
 		imported_weapon.visible = enabled and not hide_viewmodel_for_scope
 	weapon_mesh.visible = enabled and imported_weapon == null and not hide_viewmodel_for_scope
