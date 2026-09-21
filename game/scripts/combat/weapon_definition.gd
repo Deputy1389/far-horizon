@@ -24,12 +24,14 @@ static func pistol() -> WeaponDefinition:
 	weapon.rounds_per_second = 3.8
 	weapon.hip_spread_degrees = 0.8
 	weapon.ads_spread_degrees = 0.14
-	weapon.recoil_pitch_degrees = 0.9
+	weapon.recoil_pitch_degrees = 0.72
 	weapon.recoil_yaw_degrees = 0.24
 	weapon.heat_per_shot = 0.19
 	weapon.cooling_rate = 0.42
-	weapon.viewmodel_offset = Vector3(0.27, -0.24, -0.5)
-	weapon.ads_offset = Vector3(0.0, -0.19, -0.36)
+	weapon.ads_fov = 64.0
+	weapon.viewmodel_scale = Vector3.ONE * 0.9
+	weapon.viewmodel_offset = Vector3(0.25, -0.25, -0.50)
+	weapon.ads_offset = Vector3(0.015, -0.205, -0.40)
 	return weapon
 
 static func rifle() -> WeaponDefinition:
@@ -40,10 +42,12 @@ static func rifle() -> WeaponDefinition:
 	weapon.rounds_per_second = 8.0
 	weapon.hip_spread_degrees = 0.62
 	weapon.ads_spread_degrees = 0.1
-	weapon.recoil_pitch_degrees = 0.42
+	weapon.recoil_pitch_degrees = 0.36
 	weapon.recoil_yaw_degrees = 0.12
 	weapon.heat_per_shot = 0.105
 	weapon.cooling_rate = 0.31
-	weapon.viewmodel_offset = Vector3(0.31, -0.25, -0.68)
+	weapon.ads_fov = 50.0
+	weapon.viewmodel_scale = Vector3.ONE * 0.84
+	weapon.viewmodel_offset = Vector3(0.27, -0.255, -0.64)
 	weapon.ads_offset = Vector3(0.0, -0.18, -0.51)
 	return weapon
