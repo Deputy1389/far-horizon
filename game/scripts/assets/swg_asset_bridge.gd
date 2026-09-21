@@ -151,6 +151,7 @@ static func instantiate_weapon(role: String) -> Node3D:
 		scene.queue_free()
 		return null
 	var visual := scene as Node3D
+	_apply_weapon_texture(visual, role)
 	var target_length := 0.72 if role == "blasterRifle" else 0.28
 	var current_length := _visual_longest_axis(visual)
 	if current_length > 0.001:
@@ -159,6 +160,71 @@ static func instantiate_weapon(role: String) -> Node3D:
 	# first-person viewmodel. Rotate into Godot camera-forward convention.
 	visual.rotation = Vector3(0.0, PI, 0.0)
 	return visual
+
+
+static func _weapon_texture_descriptor(role: String) -> Dictionary:
+	var data: Dictionary = manifest()
+	var weapons_value: Variant = data.get("weapons", {})
+	if not weapons_value is Dictionary:
+		return {}
+	var weapons: Dictionary = weapons_value
+	var descriptor_value: Variant = weapons.get(role, {})
+	if not descriptor_value is Dictionary:
+		return {}
+	var descriptor: Dictionary = descriptor_value
+	var textures_value: Variant = descriptor.get("textures", {})
+	if not textures_value is Dictionary:
+		return {}
+	var textures: Dictionary = textures_value
+
+	var candidates: Array[Dictionary] = []
+	for key in textures.keys():
+		var value: Variant = textures[key]
+		if not value is Dictionary:
+			continue
+		var path := String(key).to_lower()
+		var penalty := 0
+		if "spec" in path:
+			penalty += 100
+		if "_n." in path or "normal" in path or "_cn." in path:
+			penalty += 90
+		if "detail" in path or "mask" in path:
+			penalty += 40
+		candidates.append({"penalty": penalty, "value": value})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a["penalty"]) < int(b["penalty"])
+	)
+	if candidates.is_empty():
+		return {}
+	return candidates[0]["value"] as Dictionary
+
+
+static func _apply_weapon_texture(root: Node3D, role: String) -> void:
+	var texture := _texture_from_descriptor(_weapon_texture_descriptor(role))
+	if texture == null:
+		return
+	var pending: Array[Node] = [root]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		for child in node.get_children():
+			pending.append(child)
+		if not node is MeshInstance3D:
+			continue
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		for surface_index in range(mesh_instance.mesh.get_surface_count()):
+			var original: Material = mesh_instance.get_active_material(surface_index)
+			var material: StandardMaterial3D
+			if original is StandardMaterial3D:
+				material = (original as StandardMaterial3D).duplicate()
+			else:
+				material = StandardMaterial3D.new()
+			material.albedo_texture = texture
+			material.albedo_color = Color.WHITE
+			material.metallic = 0.18
+			material.roughness = 0.46
+			mesh_instance.set_surface_override_material(surface_index, material)
 
 
 static func _visual_longest_axis(root: Node3D) -> float:
