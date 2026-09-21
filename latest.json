@@ -1,8 +1,8 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(135,35): error C2039: \u0027SetAtmosphereSunLight\u0027: is not a member of \u0027ULightComponent\u0027\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(136,35): error C2039: \u0027SetAtmosphereSunLightIndex\u0027: is not a member of \u0027ULightComponent\u0027\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(137,35): error C2039: \u0027SetDynamicShadowDistanceMovableLight\u0027: is not a member of \u0027ULightComponent\u0027",
-    "sha":  "09724326143c486293c41fac5f7da4f270371c78",
-    "failedStage":  "build",
+    "diagnostics":  "[2026.09.21-07.21.03:562][592]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
+    "sha":  "53c085a0540189ce2d2d8251631a08304eeac97f",
+    "failedStage":  null,
     "engineVersion":  "5.8",
     "epicTemplate":  {
                          "assetCount":  346,
@@ -69,15 +69,27 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "09724326143c",
-    "status":  "FAIL",
+    "shortSha":  "53c085a05401",
+    "status":  "PASS",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  5.3,
+                      "durationSeconds":  12.2,
+                      "timedOut":  false
+                  },
+                  {
+                      "exitCode":  0,
+                      "name":  "automation",
+                      "durationSeconds":  24.2,
+                      "timedOut":  false
+                  },
+                  {
+                      "exitCode":  0,
+                      "name":  "boot",
+                      "durationSeconds":  16.9,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T07:20:01.5760047Z"
+    "testedAtUtc":  "2026-09-21T07:21:20.9359601Z"
 }
