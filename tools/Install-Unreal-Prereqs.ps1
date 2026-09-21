@@ -37,7 +37,17 @@ if (Test-NetFx48Sdk) {
         Remove-Item $installer -Force
     }
 
-    Invoke-WebRequest -UseBasicParsing -Uri $downloadUrl -OutFile $installer
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if ($curl) {
+        Write-Host "Downloading with progress..."
+        & $curl.Source -L --fail --progress-bar -o $installer $downloadUrl
+        if ($LASTEXITCODE -ne 0) {
+            throw "curl.exe failed to download the .NET Framework 4.8 Developer Pack (exit $LASTEXITCODE)."
+        }
+    } else {
+        Write-Host "curl.exe was not found; using PowerShell download."
+        Invoke-WebRequest -UseBasicParsing -Uri $downloadUrl -OutFile $installer
+    }
 
     if (-not (Test-Path $installer)) {
         throw "The .NET Framework 4.8 Developer Pack download did not produce '$installer'."
@@ -48,15 +58,26 @@ if (Test-NetFx48Sdk) {
         throw "The downloaded Developer Pack is unexpectedly small ($length bytes)."
     }
 
+    $megabytes = [Math]::Round($length / 1MB, 1)
+    Write-Host "Download complete: $megabytes MB"
     Write-Host "Installing .NET Framework 4.8 Developer Pack..."
+    Write-Host "The installer runs quietly and can take a few minutes. Progress will print here."
+
     $startParams = @{
         FilePath = $installer
         ArgumentList = @("/install", "/quiet", "/norestart")
         Verb = "RunAs"
         PassThru = $true
-        Wait = $true
     }
     $process = Start-Process @startParams
+
+    $started = Get-Date
+    while (-not $process.HasExited) {
+        $elapsed = [int]((Get-Date) - $started).TotalSeconds
+        Write-Host ("  still installing... {0}s" -f $elapsed)
+        Start-Sleep -Seconds 10
+        $process.Refresh()
+    }
 
     if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
         throw "The .NET Framework 4.8 Developer Pack installer exited with code $($process.ExitCode). Installer: $installer"
