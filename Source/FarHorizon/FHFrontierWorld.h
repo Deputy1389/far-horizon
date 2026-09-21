@@ -100,6 +100,9 @@ private:
     UPROPERTY(VisibleAnywhere)
     TObjectPtr<UHierarchicalInstancedStaticMeshComponent> AntennaInstances;
 
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<UHierarchicalInstancedStaticMeshComponent> VaporatorInstances;
+
     FRandomStream RandomStream;
 
     static constexpr float CityRadius = 110000.0f;
