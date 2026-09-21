@@ -49,6 +49,8 @@ var right_hand_bone := -1
 var left_hand_bone := -1
 var weapon_mount := Node3D.new()
 var weapon_visual: Node3D
+var walk_clip_speed := 0.0
+var run_clip_speed := 0.0
 var fire_audio := AudioStreamPlayer3D.new()
 var muzzle_flash_mesh := MeshInstance3D.new()
 var muzzle_flash_light := OmniLight3D.new()
@@ -73,6 +75,8 @@ func _ready() -> void:
 	floor_max_angle = deg_to_rad(50.0)
 	_build_collision()
 	_build_visual()
+	walk_clip_speed = SwgAssetBridge.stormtrooper_animation_speed("walk")
+	run_clip_speed = SwgAssetBridge.stormtrooper_animation_speed("run")
 	_build_combat_fx()
 	_choose_patrol_target()
 
@@ -625,10 +629,12 @@ func _update_animation(delta: float) -> void:
 		animation_player.speed_scale = 1.0
 	elif planar_speed < move_speed * 0.82:
 		_set_animation("walk")
-		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed * 0.62, 0.1), 0.78, 1.08)
+		var authored_walk_speed := walk_clip_speed if walk_clip_speed > 0.1 else move_speed * 0.62
+		animation_player.speed_scale = clampf(planar_speed / maxf(authored_walk_speed, 0.1), 0.72, 1.22)
 	else:
 		_set_animation("run")
-		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed, 0.1), 0.82, 1.04)
+		var authored_run_speed := run_clip_speed if run_clip_speed > 0.1 else move_speed
+		animation_player.speed_scale = clampf(planar_speed / maxf(authored_run_speed, 0.1), 0.72, 1.18)
 
 
 func _animation_exists(requested: String) -> bool:
