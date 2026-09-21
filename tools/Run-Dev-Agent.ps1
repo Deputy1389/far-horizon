@@ -49,7 +49,7 @@ function Get-FHRemoteSha {
         throw "Remote branch '$Remote/$Branch' was not found."
     }
 
-    $parts = $line -split "\\s+"
+    $parts = $line -split '\\s+'
     return $parts[0]
 }
 
@@ -346,7 +346,7 @@ function Invoke-FHValidation {
 
     $steps = [System.Collections.Generic.List[object]]::new()
 
-    $buildCommand = '""{0}" FarHorizonEditor Win64 Development "{1}" -WaitMutex -NoHotReloadFromIDE"' -f $UnrealTools.Build, $project
+    $buildCommand = '""{0}" -Target="FarHorizonEditor Win64 Development" -Project="{1}" -WaitMutex -NoHotReloadFromIDE"' -f $UnrealTools.Build, $project
     Write-Host "[1/3] Building FarHorizonEditor..."
     $buildParams = @{
         Name = "build"
@@ -375,9 +375,8 @@ function Invoke-FHValidation {
             "-NoSound",
             "-stdout",
             "-FullStdOutLogOutput",
-            '-ExecCmds="Automation RunTests FarHorizon"',
-            '-TestExit="Automation Test Queue Empty"',
-            ('-ReportOutputPath="{0}"' -f $reportPath)
+            '-ExecCmds="Automation RunTest FarHorizon;Quit"',
+            ('-ReportExportPath="{0}"' -f $reportPath)
         )
         $automationParams = @{
             Name = "automation"
