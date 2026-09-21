@@ -1132,6 +1132,13 @@ def character_animation_specs() -> tuple[tuple[str, tuple[str, ...], tuple[str, 
             ),
             ("all_b", "rifle", "standing", "fire"),
         ),
+        (
+            "death",
+            (
+                "appearance/animation/all_b_npc_death_pose_2.ans",
+            ),
+            ("all_b", "death", "pose"),
+        ),
     )
 
 
