@@ -72,32 +72,37 @@ func set_enabled(value: bool) -> void:
 		scope_layer.visible = false
 
 func _build_first_person_arms() -> void:
-	var sleeve_material := StandardMaterial3D.new()
-	sleeve_material.albedo_color = Color(0.16, 0.14, 0.115)
-	sleeve_material.roughness = 0.96
+	var cuff_material := StandardMaterial3D.new()
+	cuff_material.albedo_color = Color(0.13, 0.12, 0.105)
+	cuff_material.roughness = 0.94
 
 	var glove_material := StandardMaterial3D.new()
-	glove_material.albedo_color = Color(0.035, 0.035, 0.032)
-	glove_material.roughness = 0.76
+	glove_material.albedo_color = Color(0.025, 0.025, 0.024)
+	glove_material.roughness = 0.72
 
-	# Keep the first-person body presence subtle. These are intentionally
-	# compact forearms rather than the previous giant cylinders that dominated
-	# the bottom half of the screen.
-	_add_arm_segment(
-		Vector3(0.30, -0.33, 0.16),
-		Vector3(0.11, -0.10, -0.12),
-		0.052,
-		sleeve_material
-	)
-	_add_arm_segment(
-		Vector3(-0.25, -0.30, 0.10),
-		Vector3(-0.075, -0.075, -0.25),
-		0.048,
-		sleeve_material
-	)
-	_add_hand(Vector3(0.105, -0.085, -0.13), Vector3(0.09, 0.075, 0.13), glove_material)
-	_add_hand(Vector3(-0.072, -0.065, -0.25), Vector3(0.085, 0.07, 0.12), glove_material)
+	# Until we have a real first-person body rig, keep the surrogate anatomy
+	# extremely restrained: two gloves and short cuffs placed around the weapon.
+	# Long primitive forearms read worse than a mostly-hidden body.
+	_add_hand(Vector3(0.105, -0.085, -0.13), Vector3(0.09, 0.07, 0.13), glove_material)
+	_add_hand(Vector3(-0.072, -0.065, -0.25), Vector3(0.085, 0.065, 0.12), glove_material)
 
+	var right_cuff := MeshInstance3D.new()
+	var right_cuff_mesh := BoxMesh.new()
+	right_cuff_mesh.size = Vector3(0.11, 0.09, 0.12)
+	right_cuff.mesh = right_cuff_mesh
+	right_cuff.position = Vector3(0.13, -0.13, -0.02)
+	right_cuff.rotation = Vector3(deg_to_rad(-8.0), 0.0, deg_to_rad(-7.0))
+	right_cuff.material_override = cuff_material
+	arms_root.add_child(right_cuff)
+
+	var left_cuff := MeshInstance3D.new()
+	var left_cuff_mesh := BoxMesh.new()
+	left_cuff_mesh.size = Vector3(0.10, 0.085, 0.11)
+	left_cuff.mesh = left_cuff_mesh
+	left_cuff.position = Vector3(-0.105, -0.105, -0.16)
+	left_cuff.rotation = Vector3(deg_to_rad(-5.0), 0.0, deg_to_rad(6.0))
+	left_cuff.material_override = cuff_material
+	arms_root.add_child(left_cuff)
 
 func _add_arm_segment(from: Vector3, to: Vector3, radius: float, material: Material) -> void:
 	var direction := to - from
