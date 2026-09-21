@@ -1,0 +1,13 @@
+﻿{
+    "branch":  "unreal/foundation-v0.1",
+    "diagnostics":  "System.Management.Automation.RemoteException: fatal: Could not parse object \u0027d23cfc42414957834ed71947354d11709afc8ae4\u0027.",
+    "sha":  "d23cfc42414957834ed71947354d11709afc8ae4",
+    "failedStage":  "runner",
+    "engineVersion":  "5.8",
+    "shortSha":  "d23cfc424149",
+    "status":  "FAIL",
+    "steps":  [
+
+              ],
+    "testedAtUtc":  "2026-09-21T05:23:26.0428685Z"
+}
