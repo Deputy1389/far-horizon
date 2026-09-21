@@ -5,9 +5,11 @@ signal combat_started(squad_id: String)
 signal squad_cleared(squad_id: String)
 
 @export var reinforcement_radius := 38.0
+@export var max_simultaneous_shooters := 3
 
 var squads: Dictionary = {}
 var combat_announced: Dictionary = {}
+var firing_slots: Dictionary = {}
 
 func register_member(member: Node, squad_id: String) -> String:
 	if not squads.has(squad_id):
@@ -58,12 +60,36 @@ func _alert_members(squad_id: String, target: Node3D) -> void:
 		if is_instance_valid(member) and member.has_method("receive_squad_alert"):
 			member.receive_squad_alert(target)
 
+func request_fire_slot(member: Node) -> bool:
+	var now := Time.get_ticks_msec()
+	var stale: Array = []
+	for key in firing_slots.keys():
+		var holder = key
+		var expires := int(firing_slots[key])
+		if not is_instance_valid(holder) or expires <= now:
+			stale.append(key)
+	for key in stale:
+		firing_slots.erase(key)
+
+	if firing_slots.has(member):
+		firing_slots[member] = now + 1300
+		return true
+	if firing_slots.size() >= max_simultaneous_shooters:
+		return false
+	firing_slots[member] = now + 1300
+	return true
+
+func release_fire_slot(member: Node) -> void:
+	firing_slots.erase(member)
+
+
 func member_died(member: Node, squad_id: String) -> void:
 	if not squads.has(squad_id):
 		return
 	var members: Array = squads[squad_id]
 	members.erase(member)
 	squads[squad_id] = members
+	release_fire_slot(member)
 	var alive := 0
 	for candidate in members:
 		if is_instance_valid(candidate):
