@@ -1312,7 +1312,7 @@ def main() -> int:
                 "hiddenSubmeshes": hidden_submeshes,
                 "groundOffset": ground_offset,
                 "rigged": rigged,
-                "pipelineRevision": 3,
+                "pipelineRevision": 4,
                 **character_summary,
             }
             print(
