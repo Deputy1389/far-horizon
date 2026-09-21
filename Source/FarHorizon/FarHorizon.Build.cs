@@ -18,7 +18,9 @@ public class FarHorizon : ModuleRules
             "GameplayAbilities",
             "GameplayTags",
             "GameplayTasks",
-            "PhysicsCore"
+            "PhysicsCore",
+            "StateTreeModule",
+            "GameplayStateTreeModule"
         });
     }
 }
