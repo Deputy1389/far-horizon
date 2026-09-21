@@ -1,7 +1,7 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(12,1): fatal error C1083: Cannot open include file: \u0027Engine/SkyAtmosphere.h\u0027: No such file or directory\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHEnemyCharacter.cpp(30,22): error C4458: declaration of \u0027Mesh\u0027 hides class member\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHPlayerCharacter.cpp(54,22): error C4458: declaration of \u0027Mesh\u0027 hides class member",
-    "sha":  "265301e057dc1a8fba880c29cb04ad8a2accb3cc",
+    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(135,35): error C2039: \u0027SetAtmosphereSunLight\u0027: is not a member of \u0027ULightComponent\u0027\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(136,35): error C2039: \u0027SetAtmosphereSunLightIndex\u0027: is not a member of \u0027ULightComponent\u0027\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(137,35): error C2039: \u0027SetDynamicShadowDistanceMovableLight\u0027: is not a member of \u0027ULightComponent\u0027",
+    "sha":  "f2aa03effbca69b03f11ec499cf0e1354f68e4e6",
     "failedStage":  "build",
     "engineVersion":  "5.8",
     "epicTemplate":  {
@@ -69,15 +69,15 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "265301e057dc",
+    "shortSha":  "f2aa03effbca",
     "status":  "FAIL",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  10.9,
+                      "durationSeconds":  12.5,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T07:18:51.7788610Z"
+    "testedAtUtc":  "2026-09-21T07:19:30.5054931Z"
 }

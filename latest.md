@@ -2,17 +2,17 @@
 
 Status: FAIL
 Branch: unreal/foundation-v0.1
-Commit: 265301e057dc1a8fba880c29cb04ad8a2accb3cc
+Commit: f2aa03effbca69b03f11ec499cf0e1354f68e4e6
 UE: 5.8
-Tested: 2026-09-21T07:18:51.7788610Z
+Tested: 2026-09-21T07:19:30.5054931Z
 Failed stage: build
 
 ## Steps
 
-- build: exit 0, 10.9s, timedOut=False
+- build: exit 0, 12.5s, timedOut=False
 
 ## Diagnostics
 
-<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHFoundationArena.cpp(12,1): fatal error C1083: Cannot open include file: 'Engine/SkyAtmosphere.h': No such file or directory
-<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHEnemyCharacter.cpp(30,22): error C4458: declaration of 'Mesh' hides class member
-<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHPlayerCharacter.cpp(54,22): error C4458: declaration of 'Mesh' hides class member
+<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHFoundationArena.cpp(135,35): error C2039: 'SetAtmosphereSunLight': is not a member of 'ULightComponent'
+<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHFoundationArena.cpp(136,35): error C2039: 'SetAtmosphereSunLightIndex': is not a member of 'ULightComponent'
+<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHFoundationArena.cpp(137,35): error C2039: 'SetDynamicShadowDistanceMovableLight': is not a member of 'ULightComponent'
