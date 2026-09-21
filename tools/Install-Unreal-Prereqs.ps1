@@ -26,22 +26,18 @@ if ([string]::IsNullOrWhiteSpace($installPath)) {
 Write-Host "Visual Studio installation: $installPath"
 Write-Host "Adding Unreal-required .NET Framework development components..."
 
-$args = @(
-    "modify",
-    "--installPath", $installPath,
-    "--add", "Microsoft.Net.Component.4.8.SDK",
-    "--add", "Microsoft.Net.Component.4.8.TargetingPack",
-    "--add", "Microsoft.Net.ComponentGroup.4.8.DeveloperTools",
-    "--norestart"
-)
+# Windows PowerShell 5.1 flattens Start-Process argument arrays into a
+# single command line. Quote paths containing spaces explicitly or setup.exe
+# interprets the install path as several arguments and exits with code 87.
+$argumentLine = 'modify --installPath "{0}" --add Microsoft.Net.Component.4.8.SDK --add Microsoft.Net.Component.4.8.TargetingPack --add Microsoft.Net.ComponentGroup.4.8.DeveloperTools --norestart' -f $installPath
 
 if ($Passive) {
-    $args += "--passive"
+    $argumentLine += ' --passive'
 }
 
 $startParams = @{
     FilePath = $setup
-    ArgumentList = $args
+    ArgumentList = $argumentLine
     Verb = "RunAs"
     PassThru = $true
 }
