@@ -1062,6 +1062,7 @@ def write_skinned_gltf(
         "bones": len(skeleton.bones),
         "skins": 1,
         "animations": len(animation_documents),
+        "boneNames": [bone.name for bone in skeleton.bones],
         "animationSpeeds": {
             clip.name: round(float(clip.average_translation_speed), 6)
             for clip in animations
@@ -1095,7 +1096,13 @@ def choose_character_skeletal_mesh(entries: Iterable[AssetEntry]) -> AssetEntry 
     )
 
 
-def character_animation_specs() -> tuple[tuple[str, tuple[str, ...]], ...]:
+def character_animation_specs() -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
+    """Curated humanoid rifle clips with strict semantic fallbacks.
+
+    Exact Restoration paths are preferred. If a patch renames/moves one of
+    them, the fallback search must still match the requested motion instead of
+    silently selecting an arbitrary all_b animation.
+    """
     return (
         (
             "idle",
@@ -1103,6 +1110,7 @@ def character_animation_specs() -> tuple[tuple[str, tuple[str, ...]], ...]:
                 "appearance/animation/all_b_cbt_rifle_standing_ready_idle_front_left.ans",
                 "appearance/animation/all_b_ad_stormtrooper1.ans",
             ),
+            ("all_b", "rifle", "idle"),
         ),
         (
             "walk",
@@ -1110,10 +1118,19 @@ def character_animation_specs() -> tuple[tuple[str, tuple[str, ...]], ...]:
                 "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
                 "appearance/animation/all_b_loc_walk_male.ans",
             ),
+            ("all_b", "walk"),
         ),
         (
             "run",
             ("appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",),
+            ("all_b", "run", "rifle"),
+        ),
+        (
+            "fire",
+            (
+                "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front_left.ans",
+            ),
+            ("all_b", "rifle", "standing", "fire"),
         ),
     )
 
@@ -1148,8 +1165,8 @@ def convert_from_inventory(
     animations: list[AnimationClipData] = []
     selected_animation_paths: list[str] = []
     animation_sources: list[dict[str, str | int]] = []
-    for animation_name, preferred_paths in character_animation_specs():
-        animation_entry = _ranked_entry(entries, preferred_paths, ".ans", ("all_b",))
+    for animation_name, preferred_paths, fallback_terms in character_animation_specs():
+        animation_entry = _ranked_entry(entries, preferred_paths, ".ans", fallback_terms)
         if animation_entry is None:
             print(f"CHARACTER animation miss {animation_name}: no ranked .ans candidate")
             continue
