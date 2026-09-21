@@ -127,6 +127,74 @@ static func audio_for_role(role: String) -> AudioStream:
 	return resource as AudioStream if resource is AudioStream else null
 
 
+static func instantiate_weapon(role: String) -> Node3D:
+	var data: Dictionary = manifest()
+	var weapons_value: Variant = data.get("weapons", {})
+	if not weapons_value is Dictionary:
+		return null
+	var weapons: Dictionary = weapons_value
+	var descriptor_value: Variant = weapons.get(role, {})
+	if not descriptor_value is Dictionary:
+		return null
+	var descriptor: Dictionary = descriptor_value
+	var url := String(descriptor.get("url", ""))
+	if url.is_empty():
+		return null
+	var path := local_url_to_resource(url)
+	if not ResourceLoader.exists(path):
+		return null
+	var resource: Resource = load(path)
+	if not resource is PackedScene:
+		return null
+	var scene := (resource as PackedScene).instantiate()
+	if not scene is Node3D:
+		scene.queue_free()
+		return null
+	var visual := scene as Node3D
+	var target_length := 0.72 if role == "blasterRifle" else 0.28
+	var current_length := _visual_longest_axis(visual)
+	if current_length > 0.001:
+		visual.scale = Vector3.ONE * (target_length / current_length)
+	# SWG static weapon meshes are authored in world space rather than as a
+	# first-person viewmodel. Rotate into Godot camera-forward convention.
+	visual.rotation = Vector3(0.0, PI, 0.0)
+	return visual
+
+
+static func _visual_longest_axis(root: Node3D) -> float:
+	var minimum := Vector3(INF, INF, INF)
+	var maximum := Vector3(-INF, -INF, -INF)
+	var found := false
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if not node is MeshInstance3D:
+			continue
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var aabb := mesh_instance.get_aabb()
+		var relative := root.global_transform.affine_inverse() * mesh_instance.global_transform
+		for x_bit in range(2):
+			for y_bit in range(2):
+				for z_bit in range(2):
+					var point := Vector3(
+						aabb.position.x + (aabb.size.x if x_bit == 1 else 0.0),
+						aabb.position.y + (aabb.size.y if y_bit == 1 else 0.0),
+						aabb.position.z + (aabb.size.z if z_bit == 1 else 0.0)
+					)
+					var transformed := relative * point
+					minimum = minimum.min(transformed)
+					maximum = maximum.max(transformed)
+					found = true
+	if not found:
+		return 0.0
+	var size := maximum - minimum
+	return maxf(size.x, maxf(size.y, size.z))
+
+
 static func instantiate_mesh_proof() -> Node3D:
 	var data := manifest()
 	var descriptor = data.get("meshProof", {})
