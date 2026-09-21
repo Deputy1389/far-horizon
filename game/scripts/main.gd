@@ -11,6 +11,7 @@ var strategy: StrategicSim
 var capture_point: CapturePoint
 var hud: DebugHud
 var convoy_proxies: Dictionary = {}
+var infantry_spawn_map := Vector2.ZERO
 @onready var startup_overlay: CanvasLayer = $StartupOverlay
 @onready var startup_status: Label = $StartupOverlay/Status
 
@@ -100,6 +101,10 @@ func _build_foundation_world() -> void:
 	var city_node: Dictionary = strategy.nodes["mos_eisley"]
 	var rebel_map: Vector2 = rebel_node["map_position"]
 	var city_map: Vector2 = city_node["map_position"]
+	# For the infantry prototype, spawn at a forward staging point close enough
+	# to reach combat immediately. The full strategic outpost still exists
+	# behind the player and remains the regional control node.
+	infantry_spawn_map = city_map.lerp(rebel_map, 0.30)
 
 	_stage("Generating nearby spherical terrain...")
 	planet = ProceduralPlanet.new()
@@ -109,7 +114,7 @@ func _build_foundation_world() -> void:
 	planet.add_dressing_exclusion(rebel_map, 65.0)
 	planet.add_dressing_exclusion(city_map, 390.0)
 	planet.generate_initial()
-	player.global_position = planet.surface_point(rebel_map.x, rebel_map.y) + Vector3.UP * 0.18
+	player.global_position = planet.surface_point(infantry_spawn_map.x, infantry_spawn_map.y) + Vector3.UP * 0.18
 	print("FOUNDATION_SPAWN player=%s terrain_y=%.3f" % [str(player.global_position), planet.surface_y(player.global_position.x, player.global_position.z)])
 
 	_stage("Building Rebel staging area...")
@@ -137,7 +142,7 @@ func _build_foundation_world() -> void:
 	_spawn_enemies()
 	_stage("Creating objective and speeder...")
 	_spawn_capture_point()
-	_spawn_speeder(rebel_map)
+	_spawn_speeder(infantry_spawn_map)
 
 	if capture_point != null:
 		capture_point.progress_changed.connect(hud.set_capture_progress)
@@ -168,10 +173,10 @@ func _spawn_capture_point() -> void:
 	capture_point.configure(strategy, "mos_eisley")
 	capture_point.captured.connect(_on_capture_completed)
 
-func _spawn_speeder(rebel_map: Vector2) -> void:
+func _spawn_speeder(spawn_map: Vector2) -> void:
 	var speeder := Speeder.new()
 	add_child(speeder)
-	var speeder_map := rebel_map + Vector2(11.0, -15.0)
+	var speeder_map := spawn_map + Vector2(8.0, -9.0)
 	var point := planet.surface_point(speeder_map.x, speeder_map.y)
 	speeder.global_position = point + Vector3.UP * 1.5
 	speeder.rotation.y = PI
@@ -179,16 +184,9 @@ func _spawn_speeder(rebel_map: Vector2) -> void:
 func _respawn_player() -> void:
 	player.restore_full_health()
 	player.velocity = Vector3.ZERO
-	var rebel_node: Dictionary = strategy.nodes.get("rebel_outpost", {})
-	if not rebel_node.is_empty():
-		var base_ecef: PackedFloat64Array = rebel_node["planet_position"]
-		var base_local := floating_origin.local_position(base_ecef)
-		base_local.y = planet.surface_y(base_local.x, base_local.z)
-		player.global_position = base_local + Vector3.UP * 0.08
-	else:
-		player.global_position = planet.surface_point(0.0, 180.0) + Vector3.UP * 0.08
+	player.global_position = planet.surface_point(infantry_spawn_map.x, infantry_spawn_map.y) + Vector3.UP * 0.12
 	strategy.apply_local_result("rebel_outpost", "imperial", 4.0)
-	strategy.event_logged.emit("You redeployed at the Rebel outpost. The failed assault cost local strength.")
+	strategy.event_logged.emit("Redeployed at the forward staging point. Get back into the fight.")
 
 func _install_input_map() -> void:
 	_bind_key("move_forward", KEY_W)
