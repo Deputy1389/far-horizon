@@ -29,6 +29,7 @@ var capture_contested := false
 var objective_captured := false
 var scoped_aim := false
 var redeploy_visible := false
+var nearest_hostile_distance := INF
 
 func configure(player_ref: FPSController, origin_ref: FloatingOrigin, strategy_ref: StrategicSim) -> void:
 	player = player_ref
@@ -148,6 +149,7 @@ func _process(delta: float) -> void:
 	if strategy != null:
 		strategy_label.text = "\n".join(strategy.summary_lines())
 
+	_update_nearest_hostile()
 	_update_objective()
 	_update_interaction_prompt()
 	event_timer = maxf(0.0, event_timer - delta)
@@ -174,6 +176,15 @@ func _process(delta: float) -> void:
 	if event_timer <= 0.0:
 		event_label.text = "OBJECTIVE\nEnter the city, break the Imperial garrison, then take the speeder back into the desert."
 
+func _update_nearest_hostile() -> void:
+	nearest_hostile_distance = INF
+	for candidate in get_tree().get_nodes_in_group("enemy"):
+		if not candidate is Node3D or not is_instance_valid(candidate):
+			continue
+		var distance := player.global_position.distance_to((candidate as Node3D).global_position)
+		nearest_hostile_distance = minf(nearest_hostile_distance, distance)
+
+
 func _update_objective() -> void:
 	if objective_captured:
 		objective_label.text = "GARRISON SECURED\nReturn to the speeder and push back into the desert."
@@ -199,7 +210,10 @@ func _update_objective() -> void:
 			int(round(capture_ratio * 100.0)),
 		]
 	else:
-		objective_label.text = "IMPERIAL GARRISON  %.0f m\nFollow the road into the city." % distance
+		var contact_line := ""
+		if nearest_hostile_distance < 95.0:
+			contact_line = "\nHOSTILES  %.0f m" % nearest_hostile_distance
+		objective_label.text = "IMPERIAL GARRISON  %.0f m\nFollow the road into the city.%s" % [distance, contact_line]
 
 func _update_interaction_prompt() -> void:
 	var nearest_distance := 4.0
