@@ -144,7 +144,6 @@ void AFHFoundationArena::SpawnNavigationBounds()
         FNavigationSystem::GetCurrent<UNavigationSystemV1>(World))
     {
         Navigation->OnNavigationBoundsUpdated(NavBounds);
-        Navigation->RebuildAll(false);
     }
 }
 
