@@ -7,6 +7,7 @@ var strategy: StrategicSim
 
 var health_label := Label.new()
 var weapon_label := Label.new()
+var heat_label := Label.new()
 var status_label := Label.new()
 var strategy_label := Label.new()
 var event_label := Label.new()
@@ -18,6 +19,8 @@ var damage_overlay := ColorRect.new()
 var event_timer := 0.0
 var hit_marker_timer := 0.0
 var damage_flash_timer := 0.0
+var debug_visible := false
+var controls_label := Label.new()
 var capture_ratio := 0.0
 var capture_contested := false
 var objective_captured := false
@@ -31,9 +34,11 @@ func configure(player_ref: FPSController, origin_ref: FloatingOrigin, strategy_r
 	player.stance_changed.connect(_on_stance_changed)
 	player.weapons.weapon_changed.connect(_on_weapon_changed)
 	player.weapons.hit_confirmed.connect(_on_hit_confirmed)
+	player.weapons.heat_changed.connect(_on_heat_changed)
 	strategy.event_logged.connect(_on_event)
 	_on_health_changed(player.health, player.maximum_health)
 	_on_weapon_changed(player.weapons.current_weapon().display_name)
+	_on_heat_changed(player.weapons.heat, player.weapons.is_overheated())
 
 func _ready() -> void:
 	damage_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -55,10 +60,13 @@ func _ready() -> void:
 	add_child(top_left)
 	top_left.add_child(health_label)
 	top_left.add_child(weapon_label)
+	top_left.add_child(heat_label)
 	top_left.add_child(status_label)
+	status_label.visible = debug_visible
 
 	strategy_label.position = Vector2(20, 104)
 	strategy_label.add_theme_font_size_override("font_size", 15)
+	strategy_label.visible = debug_visible
 	add_child(strategy_label)
 
 	objective_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -75,12 +83,12 @@ func _ready() -> void:
 	interaction_label.add_theme_font_size_override("font_size", 18)
 	add_child(interaction_label)
 
-	var controls := Label.new()
-	controls.text = "WASD move   Shift sprint   Space jump/mantle   C crouch   Z prone   RMB ADS   LMB fire   1/2 weapons   E interact"
-	controls.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	controls.position = Vector2(20, -38)
-	controls.add_theme_font_size_override("font_size", 14)
-	add_child(controls)
+	controls_label.text = "WASD move   Shift sprint   Space jump/mantle   C crouch   Z prone   RMB ADS   LMB fire   R vent   1/2 weapons   E interact   F3 debug"
+	controls_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	controls_label.position = Vector2(20, -38)
+	controls_label.add_theme_font_size_override("font_size", 14)
+	controls_label.visible = debug_visible
+	add_child(controls_label)
 
 	event_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	event_label.position = Vector2(-430, 20)
@@ -88,6 +96,14 @@ func _ready() -> void:
 	event_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	event_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(event_label)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).physical_keycode == KEY_F3:
+		debug_visible = not debug_visible
+		status_label.visible = debug_visible
+		strategy_label.visible = debug_visible
+		controls_label.visible = debug_visible
+
 
 func _process(delta: float) -> void:
 	if player == null:
@@ -184,7 +200,13 @@ func _on_health_changed(current: float, maximum: float) -> void:
 	health_label.text = "HEALTH  %.0f / %.0f" % [current, maximum]
 
 func _on_weapon_changed(display_name: String) -> void:
-	weapon_label.text = "WEAPON  " + display_name
+	weapon_label.text = display_name.to_upper()
+
+func _on_heat_changed(value: float, overheated: bool) -> void:
+	var bars := int(round(clampf(value, 0.0, 1.0) * 10.0))
+	var meter := "[" + "#".repeat(bars) + "-".repeat(10 - bars) + "]"
+	heat_label.text = ("OVERHEATED  " if overheated else "BLASTER  ") + meter
+	heat_label.modulate = Color(1.0, 0.45, 0.25) if overheated else Color(0.9, 0.88, 0.78)
 
 func _on_stance_changed(_new_stance: String) -> void:
 	pass
