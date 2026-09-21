@@ -2,6 +2,20 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# Local/generated SWG import payloads
 assets/local-swg/
-.godot/
 .runtime/
+
+# Legacy Godot generated state
+.godot/
+
+# Unreal generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.VC.db
+*.VC.opendb
+*.sln
