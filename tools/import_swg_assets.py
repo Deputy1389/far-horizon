@@ -103,6 +103,10 @@ AUDIO_TARGETS: dict[str, tuple[str, ...]] = {
     "footstepSand4": (
         "sample/fs_out_sand_crunch_04.wav",
     ),
+    "tatooineAmbience": (
+        "sample/amb_tatooine_mos_eisley_lp.wav",
+        "sample/amb_tatooine_anchorhead_lp.wav",
+    ),
 }
 
 
