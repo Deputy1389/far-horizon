@@ -92,3 +92,23 @@ func _spawn_impact(position: Vector3, normal: Vector3) -> void:
 
 	var timer := get_tree().create_timer(0.075)
 	timer.timeout.connect(impact.queue_free)
+
+	# Leave a short-lived scorch so firefights visibly mark the environment.
+	var scorch := MeshInstance3D.new()
+	var scorch_mesh := CylinderMesh.new()
+	scorch_mesh.top_radius = 0.11
+	scorch_mesh.bottom_radius = 0.11
+	scorch_mesh.height = 0.008
+	scorch_mesh.radial_segments = 10
+	scorch.mesh = scorch_mesh
+	var scorch_material := StandardMaterial3D.new()
+	scorch_material.albedo_color = Color(0.035, 0.025, 0.02, 0.78)
+	scorch_material.roughness = 1.0
+	scorch_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	scorch.material_override = scorch_material
+	get_tree().current_scene.add_child(scorch)
+	scorch.global_position = position + normal * 0.012
+	if normal.length_squared() > 0.001:
+		scorch.global_basis = Basis(Quaternion(Vector3.UP, normal.normalized()))
+	var scorch_timer := get_tree().create_timer(4.0)
+	scorch_timer.timeout.connect(scorch.queue_free)
