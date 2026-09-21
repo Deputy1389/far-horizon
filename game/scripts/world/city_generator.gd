@@ -17,6 +17,8 @@ var roof_material := StandardMaterial3D.new()
 var road_material := StandardMaterial3D.new()
 var accent_material := StandardMaterial3D.new()
 var landmark_material := StandardMaterial3D.new()
+var door_material := StandardMaterial3D.new()
+var window_material := StandardMaterial3D.new()
 
 func configure(planet_ref: ProceduralPlanet, center_xz: Vector2) -> void:
 	planet = planet_ref
@@ -40,6 +42,21 @@ func _setup_materials() -> void:
 	accent_material.roughness = 0.62
 	landmark_material.albedo_color = Color(0.52, 0.42, 0.31)
 	landmark_material.roughness = 0.9
+	door_material.albedo_color = Color(0.12, 0.10, 0.09)
+	door_material.metallic = 0.18
+	door_material.roughness = 0.72
+	window_material.albedo_color = Color(0.08, 0.13, 0.16)
+	window_material.metallic = 0.25
+	window_material.roughness = 0.3
+	window_material.emission_enabled = true
+	window_material.emission = Color(0.08, 0.18, 0.22)
+	window_material.emission_energy_multiplier = 0.35
+
+	wall_material.uv1_scale = Vector3(4.0, 3.0, 4.0)
+	roof_material.uv1_scale = Vector3(3.0, 3.0, 3.0)
+	road_material.uv1_scale = Vector3(7.0, 7.0, 7.0)
+	accent_material.uv1_scale = Vector3(3.0, 3.0, 3.0)
+	landmark_material.uv1_scale = Vector3(4.0, 4.0, 4.0)
 
 	var capital_texture := SwgAssetBridge.texture_for_role("capitalWall")
 	if capital_texture != null:
@@ -189,6 +206,45 @@ func _add_building(offset: Vector2, size: Vector3) -> void:
 		awning.position = Vector3(0.0, min(3.1, size.y * 0.55), -size.z * 0.5 - 1.15)
 		awning.material_override = accent_material
 		root.add_child(awning)
+
+	# Break the box silhouette with readable doors/windows and utility details.
+	var door := MeshInstance3D.new()
+	var door_mesh := BoxMesh.new()
+	door_mesh.size = Vector3(minf(2.4, size.x * 0.16), minf(3.1, size.y * 0.42), 0.18)
+	door.mesh = door_mesh
+	door.position = Vector3(
+		rng.randf_range(-size.x * 0.24, size.x * 0.24),
+		door_mesh.size.y * 0.5,
+		-size.z * 0.5 - 0.10
+	)
+	door.material_override = door_material
+	root.add_child(door)
+
+	if size.x > 20.0:
+		for side in [-1.0, 1.0]:
+			var window := MeshInstance3D.new()
+			var window_mesh := BoxMesh.new()
+			window_mesh.size = Vector3(2.2, 1.1, 0.12)
+			window.mesh = window_mesh
+			window.position = Vector3(
+				side * size.x * 0.24,
+				minf(3.6, size.y * 0.52),
+				-size.z * 0.5 - 0.08
+			)
+			window.material_override = window_material
+			root.add_child(window)
+
+	if rng.randf() > 0.55:
+		var pipe := MeshInstance3D.new()
+		var pipe_mesh := CylinderMesh.new()
+		pipe_mesh.top_radius = 0.18
+		pipe_mesh.bottom_radius = 0.18
+		pipe_mesh.height = rng.randf_range(2.4, 4.8)
+		pipe_mesh.radial_segments = 6
+		pipe.mesh = pipe_mesh
+		pipe.position = Vector3(size.x * 0.5 + 0.22, pipe_mesh.height * 0.5 + 0.4, rng.randf_range(-size.z * 0.25, size.z * 0.25))
+		pipe.material_override = accent_material
+		root.add_child(pipe)
 
 func _generate_landmark() -> void:
 	var offset := Vector2(118.0, -92.0)
@@ -345,9 +401,19 @@ func garrison_global_position() -> Vector3:
 	return to_global(garrison_local)
 
 func _place_imported_environment_proof() -> void:
-	var proof := SwgAssetBridge.instantiate_mesh_proof()
-	if proof == null:
-		return
-	proof.position = _surface_local(-74.0, 92.0)
-	proof.scale = Vector3.ONE * 1.15
-	add_child(proof)
+	var placements := [
+		Vector3(-74.0, 0.0, 92.0),
+		Vector3(82.0, 0.0, 106.0),
+		Vector3(-118.0, 0.0, -78.0),
+		Vector3(128.0, 0.0, 42.0),
+		Vector3(-46.0, 0.0, -126.0),
+	]
+	for index in range(placements.size()):
+		var proof := SwgAssetBridge.instantiate_mesh_proof()
+		if proof == null:
+			return
+		var placement: Vector3 = placements[index]
+		proof.position = _surface_local(placement.x, placement.z)
+		proof.rotation.y = float(index) * 0.9
+		proof.scale = Vector3.ONE * (0.82 + float(index % 3) * 0.12)
+		add_child(proof)
