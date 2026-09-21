@@ -5,6 +5,7 @@
 #include "FHFrontierWorld.generated.h"
 
 class UHierarchicalInstancedStaticMeshComponent;
+class USceneComponent;
 class UMaterialInterface;
 class UStaticMesh;
 
@@ -41,6 +42,9 @@ private:
         const FRotator& Rotation = FRotator::ZeroRotator);
 
     UMaterialInterface* LoadLocalMaterial(const TCHAR* AssetPath) const;
+
+    UPROPERTY(VisibleAnywhere)
+    TObjectPtr<USceneComponent> SceneRoot;
 
     UPROPERTY()
     TObjectPtr<UStaticMesh> CubeMesh;
