@@ -1,6 +1,7 @@
 #include "FHPlayerCharacter.h"
 
 #include "FHBlasterComponent.h"
+#include "FHHealthComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
@@ -41,6 +42,7 @@ AFHPlayerCharacter::AFHPlayerCharacter()
     WeaponMuzzle->SetRelativeLocation(FVector(55.0, 0.0, 0.0));
 
     Blaster = CreateDefaultSubobject<UFHBlasterComponent>(TEXT("Blaster"));
+    Health = CreateDefaultSubobject<UFHHealthComponent>(TEXT("Health"));
 
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = true;
@@ -54,6 +56,16 @@ AFHPlayerCharacter::AFHPlayerCharacter()
     Movement->BrakingDecelerationWalking = 1800.0f;
     Movement->GroundFriction = 8.0f;
     Movement->GetNavAgentPropertiesRef().bCanCrouch = true;
+}
+
+void AFHPlayerCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+
+    if (Health)
+    {
+        Health->OnDeath.AddDynamic(this, &AFHPlayerCharacter::HandleDeath);
+    }
 }
 
 void AFHPlayerCharacter::Tick(float DeltaSeconds)
@@ -270,4 +282,16 @@ void AFHPlayerCharacter::Fire()
         FirstPersonCamera->GetForwardVector(),
         WeaponMuzzle->GetComponentLocation(),
         Controller);
+}
+
+void AFHPlayerCharacter::HandleDeath(AActor* DeadActor)
+{
+    StopSprint();
+    bIsAiming = false;
+    GetCharacterMovement()->DisableMovement();
+
+    if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+    {
+        DisableInput(PlayerController);
+    }
 }
