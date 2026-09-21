@@ -1,13 +1,13 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "System.Management.Automation.RuntimeException: git reset --hard e77d9ffa9cf4ee32fa919556899c4d1c3a9a3833 failed with exit code 128.\r\nfatal: Could not parse object \u0027e77d9ffa9cf4ee32fa919556899c4d1c3a9a3833\u0027.",
-    "sha":  "e77d9ffa9cf4ee32fa919556899c4d1c3a9a3833",
+    "diagnostics":  "System.Management.Automation.RuntimeException: git reset --hard 4b52a89455e93c319476edd6e9c2e0265b46bcac failed with exit code 128.\r\nfatal: Could not parse object \u00274b52a89455e93c319476edd6e9c2e0265b46bcac\u0027.",
+    "sha":  "4b52a89455e93c319476edd6e9c2e0265b46bcac",
     "failedStage":  "runner",
     "engineVersion":  "5.8",
-    "shortSha":  "e77d9ffa9cf4",
+    "shortSha":  "4b52a89455e9",
     "status":  "FAIL",
     "steps":  [
 
               ],
-    "testedAtUtc":  "2026-09-21T05:30:40.1314367Z"
+    "testedAtUtc":  "2026-09-21T05:31:04.2431475Z"
 }
