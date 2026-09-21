@@ -27,8 +27,18 @@ function Invoke-FHGit {
         [switch]$AllowFailure
     )
 
-    $output = & git -C $WorkingDirectory @Arguments 2>&1
-    $code = $LASTEXITCODE
+    # Windows PowerShell 5 promotes native stderr records when the caller uses
+    # ErrorActionPreference=Stop. Git writes normal progress (for example
+    # "Preparing worktree..." / "Cloning into...") to stderr, so temporarily
+    # downgrade only while the native process runs and trust its exit code.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & git -C $WorkingDirectory @Arguments 2>&1
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
 
     if (-not $AllowFailure -and $code -ne 0) {
         $message = $output -join [Environment]::NewLine
@@ -256,33 +266,41 @@ function Ensure-FHResultsClone {
         Remove-Item -Recurse -Force $Path
     }
 
-    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
-    & git clone --filter=blob:none --no-checkout $RemoteUrl $Path 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not create the local results clone."
+    $parent = Split-Path -Parent $Path
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+
+    $clone = Invoke-FHGit -WorkingDirectory $parent -Arguments @(
+        "clone",
+        "--filter=blob:none",
+        "--no-checkout",
+        $RemoteUrl,
+        $Path
+    )
+    if ($clone.Output.Count -gt 0) {
+        $clone.Output | ForEach-Object { Write-Host ([string]$_) }
     }
 
-    & git -C $Path ls-remote --exit-code --heads origin $BranchName 2>&1 | Out-Null
-    $remoteExists = ($LASTEXITCODE -eq 0)
+    $probe = Invoke-FHGit -WorkingDirectory $Path -Arguments @(
+        "ls-remote",
+        "--exit-code",
+        "--heads",
+        "origin",
+        $BranchName
+    ) -AllowFailure
+    $remoteExists = ($probe.ExitCode -eq 0)
 
     if ($remoteExists) {
-        & git -C $Path fetch origin $BranchName 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not fetch results branch '$BranchName'."
+        $fetch = Invoke-FHGit -WorkingDirectory $Path -Arguments @("fetch", "origin", $BranchName)
+        if ($fetch.Output.Count -gt 0) {
+            $fetch.Output | ForEach-Object { Write-Host ([string]$_) }
         }
-        & git -C $Path checkout -B $BranchName FETCH_HEAD 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not check out results branch '$BranchName'."
-        }
+        Invoke-FHGit -WorkingDirectory $Path -Arguments @("checkout", "-B", $BranchName, "FETCH_HEAD") | Out-Null
     } else {
-        & git -C $Path checkout --orphan $BranchName 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            throw "Could not create results branch '$BranchName'."
-        }
+        Invoke-FHGit -WorkingDirectory $Path -Arguments @("checkout", "--orphan", $BranchName) | Out-Null
     }
 
-    & git -C $Path config user.name "Far Horizon Local Runner"
-    & git -C $Path config user.email "far-horizon-runner@localhost"
+    Invoke-FHGit -WorkingDirectory $Path -Arguments @("config", "user.name", "Far Horizon Local Runner") | Out-Null
+    Invoke-FHGit -WorkingDirectory $Path -Arguments @("config", "user.email", "far-horizon-runner@localhost") | Out-Null
 }
 
 function Publish-FHResult {
@@ -301,21 +319,33 @@ function Publish-FHResult {
     ($Payload | ConvertTo-Json -Depth 8) | Set-Content -Path $jsonPath -Encoding UTF8
     $Markdown | Set-Content -Path $mdPath -Encoding UTF8
 
-    & git -C $ResultsPath add latest.json latest.md
-    & git -C $ResultsPath diff --cached --quiet
-    if ($LASTEXITCODE -eq 0) {
+    Invoke-FHGit -WorkingDirectory $ResultsPath -Arguments @("add", "latest.json", "latest.md") | Out-Null
+
+    $diff = Invoke-FHGit -WorkingDirectory $ResultsPath -Arguments @("diff", "--cached", "--quiet") -AllowFailure
+    if ($diff.ExitCode -eq 0) {
         return
+    }
+    if ($diff.ExitCode -ne 1) {
+        throw "Could not inspect the staged local-runner result (git diff exit $($diff.ExitCode))."
     }
 
     $shortSha = $Payload.sha.Substring(0, [Math]::Min(8, $Payload.sha.Length))
-    & git -C $ResultsPath commit -m "runner: $($Payload.status) $shortSha" 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not commit local runner result."
+    $commit = Invoke-FHGit -WorkingDirectory $ResultsPath -Arguments @(
+        "commit",
+        "-m",
+        "runner: $($Payload.status) $shortSha"
+    )
+    if ($commit.Output.Count -gt 0) {
+        $commit.Output | ForEach-Object { Write-Host ([string]$_) }
     }
 
-    & git -C $ResultsPath push origin "HEAD:refs/heads/$BranchName" 2>&1 | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not push local runner result branch '$BranchName'."
+    $push = Invoke-FHGit -WorkingDirectory $ResultsPath -Arguments @(
+        "push",
+        "origin",
+        "HEAD:refs/heads/$BranchName"
+    )
+    if ($push.Output.Count -gt 0) {
+        $push.Output | ForEach-Object { Write-Host ([string]$_) }
     }
 }
 
@@ -550,6 +580,12 @@ while ($true) {
             Write-Host ""
             Write-Host "RESULT: $status$failedStageText  $($result.shortSha)"
             Write-Host "Logs:   $($result.localLogDirectory)"
+
+            if ($result.failedStage -eq "runner" -and -not [string]::IsNullOrWhiteSpace([string]$result.diagnostics)) {
+                Write-Host ""
+                Write-Host "Runner diagnostic:"
+                Write-Host ([string]$result.diagnostics)
+            }
 
             $stepLines = ($result.steps | ForEach-Object {
                 "- $($_.name): exit $($_.exitCode), $($_.durationSeconds)s, timedOut=$($_.timedOut)"
