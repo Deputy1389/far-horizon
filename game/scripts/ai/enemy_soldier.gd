@@ -34,6 +34,9 @@ var reaction_timer := 0.0
 var lost_sight_timer := 0.0
 var last_seen_position := Vector3.ZERO
 var aim_settle_timer := 0.0
+var under_fire_timer := 0.0
+var post_burst_reposition_timer := 0.0
+var flank_commit_timer := 0.0
 
 var visual_root := Node3D.new()
 var muzzle := Marker3D.new()
@@ -147,6 +150,9 @@ func _physics_process(delta: float) -> void:
 
 	fire_cooldown = maxf(0.0, fire_cooldown - delta)
 	hit_stun = maxf(0.0, hit_stun - delta)
+	under_fire_timer = maxf(0.0, under_fire_timer - delta)
+	post_burst_reposition_timer = maxf(0.0, post_burst_reposition_timer - delta)
+	flank_commit_timer = maxf(0.0, flank_commit_timer - delta)
 	reaction_timer = maxf(0.0, reaction_timer - delta)
 	perception_timer -= delta
 	repath_timer -= delta
@@ -214,28 +220,42 @@ func _combat_update(delta: float) -> void:
 
 	combat_action_timer -= delta
 	if combat_action_timer <= 0.0:
-		combat_action_timer = rng.randf_range(0.95, 1.75)
+		combat_action_timer = rng.randf_range(1.15, 2.1)
 		strafe_sign = -1.0 if rng.randf() < 0.5 else 1.0
+		squad_manager.release_cover(self)
+
 		if not has_los:
+			# Search toward the last sighting instead of blindly charging the player.
 			combat_move_mode = 5
 		elif distance < 10.5:
+			# Create space aggressively if the player rushes us.
 			combat_move_mode = 6
-		elif health < maximum_health * 0.52 and rng.randf() < 0.62:
+		elif under_fire_timer > 0.0 or health < maximum_health * 0.52:
 			cover_target = _find_cover_target()
 			combat_move_mode = 4 if cover_target != Vector3.ZERO else 1
-		elif distance > preferred_distance + 13.0:
+		elif post_burst_reposition_timer > 0.0:
+			# Shoot, move, shoot. Don't become a stationary turret after every burst.
+			combat_move_mode = 1 if rng.randf() < 0.7 else 2
+		elif squad_role == "suppress":
+			# Suppressors mostly anchor the fight and create firing windows.
+			combat_move_mode = 0 if distance <= preferred_distance + 10.0 else 3
+		elif squad_role == "flank_left":
+			combat_move_mode = 7
+			flank_commit_timer = rng.randf_range(1.2, 2.4)
+		elif squad_role == "flank_right":
+			combat_move_mode = 8
+			flank_commit_timer = rng.randf_range(1.2, 2.4)
+		elif distance > preferred_distance + 10.0:
 			combat_move_mode = 3
 		else:
 			var choice := rng.randf()
-			if choice < 0.34:
+			if choice < 0.48:
 				combat_move_mode = 0
-			elif choice < 0.72:
+			elif choice < 0.78:
 				combat_move_mode = 1
-			elif choice < 0.90:
-				combat_move_mode = 2
 			else:
 				cover_target = _find_cover_target()
-				combat_move_mode = 4 if cover_target != Vector3.ZERO else 0
+				combat_move_mode = 4 if cover_target != Vector3.ZERO else 2
 
 	# Once a burst starts, commit to the shot sequence instead of sprinting while
 	# firing. This alone makes the enemy read much more like a shooter opponent.
@@ -258,12 +278,12 @@ func _combat_update(delta: float) -> void:
 			desired = last_seen_position + side * 5.5 * strafe_sign
 		6:
 			desired = global_position + away * 8.0 + side * 3.0 * strafe_sign
+		7:
+			desired = target_position + away * (preferred_distance + 2.0) + side * 13.0
+		8:
+			desired = target_position + away * (preferred_distance + 2.0) - side * 13.0
 
-	if squad_role == "flank_left" and combat_move_mode not in [4, 5, 6]:
-		desired += side * 5.0
-	elif squad_role == "flank_right" and combat_move_mode not in [4, 5, 6]:
-		desired -= side * 5.0
-	elif squad_role == "suppress" and combat_move_mode == 2:
+	if squad_role == "suppress" and combat_move_mode == 2:
 		desired = target_position + away * (preferred_distance + 7.0)
 
 	desired += _squad_separation() * 3.2
@@ -273,7 +293,7 @@ func _combat_update(delta: float) -> void:
 	if wants_to_move:
 		move_direction = _avoid_obstacle(move_direction.normalized())
 		var combat_speed := move_speed * 0.82
-		if combat_move_mode in [3, 5]:
+		if combat_move_mode in [3, 5, 7, 8]:
 			combat_speed = move_speed
 		elif combat_move_mode == 6:
 			combat_speed = move_speed * 0.9
@@ -321,6 +341,8 @@ func _fire_at_target(distance: float) -> void:
 	fire_cooldown = rng.randf_range(0.13, 0.22) if burst_remaining > 0 else rng.randf_range(0.72, 1.18)
 	if burst_remaining <= 0:
 		squad_manager.release_fire_slot(self)
+		post_burst_reposition_timer = rng.randf_range(0.8, 1.5)
+		combat_action_timer = minf(combat_action_timer, rng.randf_range(0.15, 0.35))
 	var aim_point := target.global_position + Vector3.UP * 1.05
 	var direction := (aim_point - muzzle.global_position).normalized()
 	var inaccuracy: float = lerpf(0.012, 0.032, clampf(distance / engage_distance, 0.0, 1.0))
@@ -371,6 +393,8 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vec
 		return
 	health -= amount
 	hit_stun = 0.11
+	under_fire_timer = 2.2
+	combat_action_timer = 0.0
 	visual_root.rotation.x = deg_to_rad(-5.0)
 	if source is Node3D:
 		target = source
@@ -381,6 +405,7 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vec
 func _begin_death(direction: Vector3) -> void:
 	dead = true
 	squad_manager.release_fire_slot(self)
+	squad_manager.release_cover(self)
 	death_timer = 2.2
 	death_roll = -1.0 if rng.randf() < 0.5 else 1.0
 	velocity = Vector3.ZERO
@@ -451,7 +476,9 @@ func _find_cover_target() -> Vector3:
 		if score < best_score:
 			best_score = score
 			best = hide_position
-	return best
+	if best != Vector3.ZERO and squad_manager.reserve_cover(self, best):
+		return best
+	return Vector3.ZERO
 
 
 func _avoid_obstacle(direction: Vector3) -> Vector3:
