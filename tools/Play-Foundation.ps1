@@ -57,16 +57,23 @@ if ($needsAssetRefresh) {
     }
 }
 
-if ($CleanImport) {
-    $cache = Join-Path $Repo ".godot"
-    if (Test-Path $cache) {
-        Write-Host "Removing Godot import cache..." -ForegroundColor Cyan
-        Remove-Item -Recurse -Force $cache
-    }
-}
-
 $godot = Find-GodotExecutable
 Write-Host "Using Godot: $godot" -ForegroundColor DarkGray
+
+$cache = Join-Path $Repo ".godot"
+$needsGodotImport = $CleanImport -or -not (Test-Path $cache)
+if ($CleanImport -and (Test-Path $cache)) {
+    Write-Host "Removing Godot import cache..." -ForegroundColor Cyan
+    Remove-Item -Recurse -Force $cache
+}
+
+if ($needsGodotImport) {
+    Write-Host "Rebuilding Godot import/script-class cache..." -ForegroundColor Cyan
+    & $godot --headless --editor --path $Repo --quit-after 3
+    if ($LASTEXITCODE -ne 0) {
+        throw "Godot import bootstrap failed with exit code $LASTEXITCODE."
+    }
+}
 
 $cacheDir = Join-Path $Repo ".godot"
 New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
