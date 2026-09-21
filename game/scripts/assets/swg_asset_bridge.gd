@@ -40,7 +40,10 @@ static func instantiate_stormtrooper() -> Node3D:
 		return null
 
 	var visual := scene as Node3D
-	var scale_factor := 6.0
+	# Fit the imported character to an actual human-scale target instead of
+	# relying on the old proof-of-concept magic multiplier. The previous 6x
+	# scale is why Stormtroopers towered over buildings.
+	var scale_factor := _fit_visual_height(visual, 1.82)
 	visual.scale = Vector3.ONE * scale_factor
 	# The converted SWG character faces +Z; Godot gameplay convention is -Z forward.
 	visual.rotation.y = PI
@@ -48,6 +51,42 @@ static func instantiate_stormtrooper() -> Node3D:
 	visual.position.y = -ground_offset * scale_factor
 	_apply_character_texture(visual, "stormtrooper")
 	return visual
+
+static func _fit_visual_height(root: Node3D, target_height: float) -> float:
+	var minimum_y := INF
+	var maximum_y := -INF
+	var found := false
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if not node is MeshInstance3D:
+			continue
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var aabb := mesh_instance.get_aabb()
+		var relative := root.global_transform.affine_inverse() * mesh_instance.global_transform
+		for x_bit in range(2):
+			for y_bit in range(2):
+				for z_bit in range(2):
+					var point := Vector3(
+						aabb.position.x + (aabb.size.x if x_bit == 1 else 0.0),
+						aabb.position.y + (aabb.size.y if y_bit == 1 else 0.0),
+						aabb.position.z + (aabb.size.z if z_bit == 1 else 0.0)
+					)
+					var transformed := relative * point
+					minimum_y = minf(minimum_y, transformed.y)
+					maximum_y = maxf(maximum_y, transformed.y)
+					found = true
+	if not found:
+		return 1.0
+	var height := maximum_y - minimum_y
+	if height <= 0.001:
+		return 1.0
+	return target_height / height
+
 
 static func texture_for_role(role: String) -> Texture2D:
 	var data := manifest()
