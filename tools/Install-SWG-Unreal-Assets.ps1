@@ -39,6 +39,27 @@ if ((Test-Path $readyMarker) -and -not $RefreshSourceAssets) {
 $runtimeBase = Join-Path $env:LOCALAPPDATA "FarHorizonSWGUnrealImport"
 New-Item -ItemType Directory -Force -Path $runtimeBase | Out-Null
 
+# Import through a content-only scratch project. This avoids requiring the
+# development checkout itself to have a freshly compiled FarHorizonEditor DLL.
+$scratchContent = Join-Path $runtimeBase "Content"
+if (-not (Test-Path $scratchContent)) {
+    New-Item -ItemType Junction -Path $scratchContent -Target (Join-Path $RepoRoot "Content") | Out-Null
+}
+
+$scratchProject = Join-Path $runtimeBase "FH_SWGImport.uproject"
+$scratchProjectJson = @{
+    FileVersion = 3
+    EngineAssociation = "5.8"
+    Category = "Tools"
+    Description = "Far Horizon local SWG Unreal importer"
+    Plugins = @(
+        @{ Name = "PythonScriptPlugin"; Enabled = $true },
+        @{ Name = "EditorScriptingUtilities"; Enabled = $true },
+        @{ Name = "InterchangeEditor"; Enabled = $true }
+    )
+} | ConvertTo-Json -Depth 10
+Set-Content -Path $scratchProject -Value $scratchProjectJson -Encoding UTF8
+
 $pythonPath = Join-Path $runtimeBase "import_swg_unreal.py"
 $repoPython = ($RepoRoot -replace "\\", "/")
 $manifestPython = ($manifest -replace "\\", "/")
@@ -191,7 +212,7 @@ unreal.log("FH_SWG_UNREAL_TEXTURES_READY roles=%d" % len(role_to_texture))
 
 $python | Set-Content -Encoding UTF8 $pythonPath
 
-$project = Join-Path $RepoRoot "FarHorizon.uproject"
+$project = $scratchProject
 $stdout = Join-Path $runtimeBase "import.stdout.log"
 $stderr = Join-Path $runtimeBase "import.stderr.log"
 Remove-Item $stdout, $stderr -Force -ErrorAction SilentlyContinue
