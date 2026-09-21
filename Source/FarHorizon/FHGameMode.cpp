@@ -1,6 +1,7 @@
 #include "FHGameMode.h"
 
 #include "FHFoundationArena.h"
+#include "FHFrontierWorld.h"
 #include "FHHUD.h"
 #include "FHPlayerCharacter.h"
 #include "Engine/World.h"
@@ -76,16 +77,21 @@ void AFHGameMode::BeginPlay()
 {
     Super::BeginPlay();
 
-    if (FParse::Param(FCommandLine::Get(), TEXT("NoFoundationArena")))
-    {
-        return;
-    }
-
     FActorSpawnParameters Params;
     Params.SpawnCollisionHandlingOverride =
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-    GetWorld()->SpawnActor<AFHFoundationArena>(
+    if (FParse::Param(FCommandLine::Get(), TEXT("FoundationArena")))
+    {
+        GetWorld()->SpawnActor<AFHFoundationArena>(
+            FVector::ZeroVector,
+            FRotator::ZeroRotator,
+            Params);
+
+        return;
+    }
+
+    GetWorld()->SpawnActor<AFHFrontierWorld>(
         FVector::ZeroVector,
         FRotator::ZeroRotator,
         Params);
@@ -115,8 +121,8 @@ AActor* AFHGameMode::ChoosePlayerStart_Implementation(
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
     RuntimePlayerStart = World->SpawnActor<APlayerStart>(
-        FVector(-1500.0, 0.0, 110.0),
-        FRotator::ZeroRotator,
+        FVector(-8200.0f, -7200.0f, 140.0f),
+        FRotator(0.0f, 42.0f, 0.0f),
         Params);
 
     return RuntimePlayerStart;
