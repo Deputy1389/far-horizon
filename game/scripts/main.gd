@@ -14,6 +14,7 @@ var convoy_proxies: Dictionary = {}
 var infantry_spawn_map := Vector2.ZERO
 var reinforcement_waves_remaining := 2
 var reinforcement_serial := 0
+var ambience_audio := AudioStreamPlayer.new()
 @onready var startup_overlay: CanvasLayer = $StartupOverlay
 @onready var startup_status: Label = $StartupOverlay/Status
 
@@ -31,6 +32,14 @@ func _stage(text: String) -> void:
 		startup_status.text = text
 
 func _build_environment() -> void:
+	var ambience := SwgAssetBridge.audio_for_role("tatooineAmbience")
+	if ambience != null:
+		ambience_audio.stream = ambience
+		ambience_audio.volume_db = -18.0
+		ambience_audio.finished.connect(_restart_ambience)
+		add_child(ambience_audio)
+		ambience_audio.play()
+
 	var environment_node := WorldEnvironment.new()
 	var environment := Environment.new()
 	var sky := Sky.new()
@@ -65,6 +74,11 @@ func _build_environment() -> void:
 	second_sun.light_energy = 0.10
 	second_sun.shadow_enabled = false
 	add_child(second_sun)
+
+func _restart_ambience() -> void:
+	if ambience_audio.stream != null:
+		ambience_audio.play()
+
 
 func _build_foundation_world() -> void:
 	_stage("Initializing spherical planet coordinates...")
