@@ -12,7 +12,7 @@ var capture_point: CapturePoint
 var hud: DebugHud
 var convoy_proxies: Dictionary = {}
 var infantry_spawn_map := Vector2.ZERO
-var reinforcement_waves_remaining := 2
+var reinforcement_waves_remaining := 1
 var reinforcement_serial := 0
 var ambience_audio := AudioStreamPlayer.new()
 @onready var startup_overlay: CanvasLayer = $StartupOverlay
@@ -174,7 +174,7 @@ func _build_foundation_world() -> void:
 
 func _spawn_enemies() -> void:
 	var positions := city.combat_spawns
-	for index in range(min(positions.size(), 8)):
+	for index in range(min(positions.size(), 4)):
 		var squad_id := "garrison_a" if index < 4 else "garrison_b"
 		_spawn_enemy(positions[index], squad_id)
 
@@ -284,7 +284,7 @@ func _on_squad_cleared(_squad_id: String) -> void:
 	if positions.is_empty():
 		return
 	var start := (reinforcement_serial * 3) % positions.size()
-	for offset in range(min(4, positions.size())):
+	for offset in range(min(3, positions.size())):
 		var index := (start + offset * 2) % positions.size()
 		_spawn_enemy(positions[index], wave_id)
 
