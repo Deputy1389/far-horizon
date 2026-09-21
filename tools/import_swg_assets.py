@@ -62,6 +62,11 @@ CHARACTER_MESH_RULES: dict[str, dict[str, Any]] = {
         "exclude": ("helmet", "toy", "weapon", "gun", "pile", "painting", "decor", "hook", "badge"),
         "require_any": ("stormtrooper", "trooper"),
     },
+    "firstPersonHands": {
+        "include": {"hum_m_hands": 180, "hands": 80, "hum_m": 40, "l0": 20},
+        "exclude": ("rod_", "wke_", "ith_", "gloves", "frn", "statue"),
+        "require_any": ("hands",),
+    },
 }
 
 
@@ -1157,7 +1162,12 @@ def main() -> int:
 
         for role in CHARACTER_MESH_RULES:
             static_entry = select_character_mesh(inventory, role)
-            skeletal_entry = choose_character_skeletal_mesh(inventory) if role == "stormtrooper" else None
+            if role == "stormtrooper":
+                skeletal_entry = choose_character_skeletal_mesh(inventory)
+            elif role == "firstPersonHands":
+                skeletal_entry = path_index.get("appearance/mesh/hum_m_hands_l0.mgn")
+            else:
+                skeletal_entry = None
             if static_entry is None and skeletal_entry is None:
                 character_failures[role] = "no ranked character mesh candidate"
                 print(f"CHARACTER miss {role}: no ranked mesh candidate")
@@ -1298,6 +1308,22 @@ def main() -> int:
                     f"{texture_entry.virtual_path} [{source_kind}]"
                 )
 
+            raw_min_y = min(
+                (position[1] for submesh in source_submeshes for position in submesh.positions),
+                default=0.0,
+            )
+            raw_max_y = max(
+                (position[1] for submesh in source_submeshes for position in submesh.positions),
+                default=1.0,
+            )
+            raw_height = max(raw_max_y - raw_min_y, 0.001)
+            if role == "stormtrooper":
+                recommended_scale = 1.82 / raw_height
+            else:
+                recommended_scale = float(
+                    characters.get("stormtrooper", {}).get("recommendedScale", 1.0)
+                )
+
             characters[role] = {
                 "url": f"./assets/local-swg/character/{role}/{character_gltf.name}",
                 "bin": f"./assets/local-swg/character/{role}/{character_bin.name}",
@@ -1311,6 +1337,8 @@ def main() -> int:
                 "sourceSubmeshes": len(source_submeshes),
                 "hiddenSubmeshes": hidden_submeshes,
                 "groundOffset": ground_offset,
+                "rawHeight": raw_height,
+                "recommendedScale": recommended_scale,
                 "rigged": rigged,
                 "pipelineRevision": 4,
                 **character_summary,
