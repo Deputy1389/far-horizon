@@ -62,7 +62,9 @@ if (-not $needsAssetRefresh) {
         $needsAssetRefresh = (
             -not $manifestData.assets.sand.godotUrl -or
             -not $manifestData.audio -or
-            -not $manifestData.audio.blasterRifle
+            -not $manifestData.audio.blasterRifle -or
+            -not $manifestData.weapons -or
+            -not $manifestData.weapons.blasterRifle
         )
     } catch {
         $needsAssetRefresh = $true
