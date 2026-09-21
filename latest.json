@@ -1,7 +1,7 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "[2026.09.21-07.34.43:401][593]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
-    "sha":  "5ebbc5be14df9d6a2b6ae731fcf98a988393050a",
+    "diagnostics":  "[2026.09.21-07.36.05:411][588]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
+    "sha":  "1e78b4f632ad838ade4d74a09be26f80c471f619",
     "failedStage":  null,
     "engineVersion":  "5.8",
     "epicTemplate":  {
@@ -69,27 +69,27 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "5ebbc5be14df",
+    "shortSha":  "1e78b4f632ad",
     "status":  "PASS",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  25.2,
+                      "durationSeconds":  8.5,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "automation",
-                      "durationSeconds":  27.1,
+                      "durationSeconds":  26.3,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "boot",
-                      "durationSeconds":  20.2,
+                      "durationSeconds":  18.4,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T07:35:04.1440078Z"
+    "testedAtUtc":  "2026-09-21T07:36:24.2799138Z"
 }
