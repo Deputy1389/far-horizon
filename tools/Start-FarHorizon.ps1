@@ -18,35 +18,39 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not update Far Horizon from GitHub."
 }
 
-$supervisorRunning = $false
+$existingSupervisors = @()
 
 try {
-    $supervisorRunning = @(
+    $existingSupervisors = @(
         Get-CimInstance Win32_Process -ErrorAction Stop |
         Where-Object {
             ($_.Name -eq "powershell.exe" -or $_.Name -eq "pwsh.exe") -and
             $_.CommandLine -match "Run-Dev-Agent\.ps1"
         }
-    ).Count -gt 0
-} catch {
-    $supervisorRunning = $false
-}
-
-if (-not $supervisorRunning) {
-    Write-Host "Starting the background tester in a separate window..." -ForegroundColor Yellow
-
-    $supervisorArgs = @(
-        "-NoProfile",
-        "-ExecutionPolicy", "Bypass",
-        "-File", (Join-Path $PSScriptRoot "Run-Dev-Agent.ps1"),
-        "-Branch", $Branch
     )
-
-    Start-Process powershell.exe -ArgumentList $supervisorArgs -WorkingDirectory $RepoRoot
-    Start-Sleep -Seconds 2
-} else {
-    Write-Host "Background tester is already running." -ForegroundColor DarkGray
+} catch {
+    $existingSupervisors = @()
 }
+
+if ($existingSupervisors.Count -gt 0) {
+    Write-Host "Refreshing the background tester..." -ForegroundColor DarkGray
+    foreach ($processInfo in $existingSupervisors) {
+        Stop-Process -Id $processInfo.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Milliseconds 500
+} else {
+    Write-Host "Starting the background tester..." -ForegroundColor Yellow
+}
+
+$supervisorArgs = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", (Join-Path $PSScriptRoot "Run-Dev-Agent.ps1"),
+    "-Branch", $Branch
+)
+
+Start-Process powershell.exe -ArgumentList $supervisorArgs -WorkingDirectory $RepoRoot
+Start-Sleep -Seconds 2
 
 Write-Host ""
 Write-Host "Checking whether the newest build is ready..." -ForegroundColor Cyan
