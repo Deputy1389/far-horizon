@@ -74,7 +74,6 @@ func _build_foundation_world() -> void:
 	player = FPSController.new()
 	add_child(player)
 	player.global_position = Vector3(0.0, 6.0, 0.0)
-	player.set_physics_process(false)
 	floating_origin.track(player)
 
 	# Strategic data owns the meaningful map coordinates. The physical world is
@@ -144,7 +143,6 @@ func _build_foundation_world() -> void:
 		hud.set_capture_progress(capture_point.progress / maxf(capture_point.capture_seconds, 0.001), false)
 
 	_stage("Finalizing playable foundation...")
-	player.set_physics_process(true)
 	player.died.connect(_respawn_player)
 	strategy.event_logged.emit("Foundation ready. Follow the road south to the Imperial garrison.")
 	print("FOUNDATION_READY chunks=%d enemies=%d" % [planet.chunks.size(), squads.active_member_count()])
