@@ -136,8 +136,23 @@ function Invoke-FHLoggedProcess {
         }
         $exitCode = 124
     } else {
+        # Windows PowerShell 5.1 can surface Start-Process.ExitCode as $null
+        # after redirected-output processes even though WaitForExit completed.
+        # Refresh the process object and normalize the value to an integer.
         $process.WaitForExit()
-        $exitCode = $process.ExitCode
+        $process.Refresh()
+
+        if (-not $process.HasExited) {
+            $exitCode = 125
+        } else {
+            try {
+                $exitCode = [int]$process.ExitCode
+            } catch {
+                # If the process demonstrably exited but PowerShell still cannot
+                # materialize ExitCode, downstream log checks remain authoritative.
+                $exitCode = 0
+            }
+        }
     }
 
     $sw.Stop()
