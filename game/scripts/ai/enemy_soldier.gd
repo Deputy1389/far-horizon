@@ -4,7 +4,7 @@ extends CharacterBody3D
 signal killed(soldier: EnemySoldier)
 
 @export var maximum_health := 100.0
-@export var move_speed := 4.8
+@export var move_speed := 3.9
 @export var engage_distance := 62.0
 @export var preferred_distance := 22.0
 
@@ -33,6 +33,7 @@ var cover_target := Vector3.ZERO
 var reaction_timer := 0.0
 var lost_sight_timer := 0.0
 var last_seen_position := Vector3.ZERO
+var aim_settle_timer := 0.0
 
 var visual_root := Node3D.new()
 var muzzle := Marker3D.new()
@@ -265,6 +266,7 @@ func _combat_update(delta: float) -> void:
 	elif squad_role == "suppress" and combat_move_mode == 2:
 		desired = target_position + away * (preferred_distance + 7.0)
 
+	desired += _squad_separation() * 3.2
 	var move_direction := desired - global_position
 	move_direction.y = 0.0
 	var wants_to_move := move_direction.length() > 1.25 and burst_remaining <= 0
@@ -289,12 +291,17 @@ func _combat_update(delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 9.0))
 
 	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	if has_los and planar_speed < 0.75:
+		aim_settle_timer += delta
+	else:
+		aim_settle_timer = 0.0
 	if (
 		has_los
 		and reaction_timer <= 0.0
 		and distance < engage_distance
 		and distance > 5.0
-		and planar_speed < 1.6
+		and planar_speed < 0.9
+		and aim_settle_timer >= 0.16
 		and fire_cooldown <= 0.0
 	):
 		_fire_at_target(distance)
@@ -391,6 +398,26 @@ func _update_death(delta: float) -> void:
 	visual_root.position.y = lerpf(visual_root.position.y, -0.22, 1.0 - exp(-delta * 5.0))
 	if death_timer <= 0.0:
 		queue_free()
+
+func _squad_separation() -> Vector3:
+	var separation := Vector3.ZERO
+	var count := 0
+	for candidate in get_tree().get_nodes_in_group("enemy"):
+		if candidate == self or not candidate is Node3D or not is_instance_valid(candidate):
+			continue
+		var other := candidate as Node3D
+		var offset := global_position - other.global_position
+		offset.y = 0.0
+		var distance := offset.length()
+		if distance <= 0.001 or distance > 4.5:
+			continue
+		var strength := (4.5 - distance) / 4.5
+		separation += offset.normalized() * strength
+		count += 1
+	if count > 0:
+		separation /= float(count)
+	return separation
+
 
 func _find_cover_target() -> Vector3:
 	if target == null or not is_instance_valid(target):
