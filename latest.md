@@ -2,18 +2,17 @@
 
 Status: PASS
 Branch: unreal/foundation-v0.1
-Commit: 514d8cae656be6ee6df73f82c2d1e000a3c09014
+Commit: 747010720f0442cace5aa8e74fea290e91983de1
 UE: 5.8
-Tested: 2026-09-21T06:35:40.6912690Z
+Tested: 2026-09-21T06:37:19.2741053Z
 Failed stage: none
 
 ## Steps
 
-- build: exit 0, 14.9s, timedOut=False
-- automation: exit 0, 23.7s, timedOut=False
-- boot: exit 0, 17.5s, timedOut=False
+- build: exit 0, 32.5s, timedOut=False
+- automation: exit 0, 24.2s, timedOut=False
+- boot: exit 0, 15.8s, timedOut=False
 
 ## Diagnostics
 
-<USER_HOME>\AppData\Local\FarHorizonDevAgent\test-worktree\Source\FarHorizon\FHEnemyCharacter.cpp(4,1): fatal error C1083: Cannot open include file: 'FHEnemyAIController.h': No such file or directory
-[2026.09.21-06.35.22:645][596]LogAutomationCommandLine: Shutting down. GIsCriticalError=0
+[2026.09.21-06.37.03:007][595]LogAutomationCommandLine: Shutting down. GIsCriticalError=0
