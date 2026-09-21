@@ -9,7 +9,6 @@
 #include "Components/SkyLightComponent.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/ExponentialHeightFog.h"
-#include "Engine/SkyAtmosphere.h"
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
@@ -116,10 +115,12 @@ void AFHFoundationArena::SpawnLighting()
         return;
     }
 
-    ASkyAtmosphere* Atmosphere = World->SpawnActor<ASkyAtmosphere>();
-    if (Atmosphere && Atmosphere->GetComponent())
+    USkyAtmosphereComponent* Atmosphere =
+        NewObject<USkyAtmosphereComponent>(this, TEXT("RuntimeSkyAtmosphere"));
+    if (Atmosphere)
     {
-        Atmosphere->GetComponent()->SetMobility(EComponentMobility::Movable);
+        Atmosphere->SetMobility(EComponentMobility::Movable);
+        Atmosphere->RegisterComponent();
     }
 
     ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
