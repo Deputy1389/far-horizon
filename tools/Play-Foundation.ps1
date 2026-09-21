@@ -9,6 +9,26 @@ $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
 Set-Location $Repo
 
+function Stop-FarHorizonGodotProcesses {
+    param([string]$ProjectPath)
+
+    $matches = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -like "Godot*.exe" -and
+            $_.CommandLine -and
+            $_.CommandLine -like "*$ProjectPath*"
+        }
+
+    foreach ($process in $matches) {
+        Write-Host "Stopping stale Far Horizon Godot process $($process.ProcessId) before clean import..." -ForegroundColor Yellow
+        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($matches) {
+        Start-Sleep -Milliseconds 500
+    }
+}
+
 function Find-GodotExecutable {
     $command = Get-Command godot -ErrorAction SilentlyContinue
     if ($command) {
@@ -62,6 +82,9 @@ Write-Host "Using Godot: $godot" -ForegroundColor DarkGray
 
 $cache = Join-Path $Repo ".godot"
 $needsGodotImport = $CleanImport -or -not (Test-Path $cache)
+if ($CleanImport) {
+    Stop-FarHorizonGodotProcesses -ProjectPath $Repo
+}
 if ($CleanImport -and (Test-Path $cache)) {
     Write-Host "Removing Godot import cache..." -ForegroundColor Cyan
     Remove-Item -Recurse -Force $cache
@@ -75,9 +98,10 @@ if ($needsGodotImport) {
     }
 }
 
-$cacheDir = Join-Path $Repo ".godot"
-New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
-$runtimeLog = Join-Path $cacheDir "foundation-runtime.log"
+$runtimeDir = Join-Path $Repo ".runtime"
+New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$runtimeLog = Join-Path $runtimeDir "foundation-runtime-$stamp.log"
 $arguments = @("--path", $Repo, "--log-file", $runtimeLog)
 if ($Editor) {
     $arguments = @("--editor") + $arguments
