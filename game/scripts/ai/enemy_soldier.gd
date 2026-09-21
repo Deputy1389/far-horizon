@@ -45,13 +45,10 @@ var animation_player: AnimationPlayer
 var active_animation := ""
 var animation_phase_seeded: Dictionary = {}
 var character_skeleton: Skeleton3D
-var right_hand_bone := -1
-var left_hand_bone := -1
+var weapon_hold_bone := -1
+var fallback_wrist_bone := -1
 var weapon_mount := Node3D.new()
 var weapon_visual: Node3D
-var weapon_hardpoint: Node3D
-var walk_clip_speed := 0.0
-var run_clip_speed := 0.0
 var fire_audio := AudioStreamPlayer3D.new()
 var muzzle_flash_mesh := MeshInstance3D.new()
 var muzzle_flash_light := OmniLight3D.new()
@@ -76,8 +73,6 @@ func _ready() -> void:
 	floor_max_angle = deg_to_rad(50.0)
 	_build_collision()
 	_build_visual()
-	walk_clip_speed = SwgAssetBridge.stormtrooper_animation_speed("walk")
-	run_clip_speed = SwgAssetBridge.stormtrooper_animation_speed("run")
 	_build_combat_fx()
 	_choose_patrol_target()
 
@@ -106,9 +101,11 @@ func _build_visual() -> void:
 		var skeletons := imported.find_children("*", "Skeleton3D", true, false)
 		if not skeletons.is_empty():
 			character_skeleton = skeletons[0] as Skeleton3D
-			right_hand_bone = _find_bone(character_skeleton, ["rwrist", "r_wrist", "rhand", "r_hand"])
-			left_hand_bone = _find_bone(character_skeleton, ["lwrist", "l_wrist", "lhand", "l_hand"])
-		weapon_hardpoint = _find_weapon_hardpoint(imported)
+			# SWG equips held weapons into the skeleton's hold_r slot. Using mesh
+			# hardpoints or inferring a transform from both wrists produces the
+			# twisted/sideways rifle pose seen in the prototype.
+			weapon_hold_bone = _find_bone(character_skeleton, ["hold_r"])
+			fallback_wrist_bone = _find_bone(character_skeleton, ["rwrist", "r_wrist", "rhand", "r_hand"])
 	else:
 		var mesh_instance := MeshInstance3D.new()
 		var capsule := CapsuleMesh.new()
@@ -122,42 +119,15 @@ func _build_visual() -> void:
 		mesh_instance.material_override = material
 		visual_root.add_child(mesh_instance)
 
-	weapon_visual = SwgAssetBridge.instantiate_weapon("blasterRifle", weapon_hardpoint == null)
+	weapon_visual = SwgAssetBridge.instantiate_weapon("blasterRifle", false)
 	if weapon_visual != null:
 		weapon_mount.add_child(weapon_visual)
-		if weapon_hardpoint != null:
-			# Exact SWG skeletal hardpoint: keep the weapon at its authored
-			# attachment origin/orientation.
-			weapon_visual.position = Vector3.ZERO
-		else:
-			# Fallback for older cached character conversions without HPTS.
-			weapon_visual.position = Vector3(0.0, -0.025, -0.18)
+		weapon_visual.position = Vector3.ZERO
+		weapon_visual.rotation = Vector3.ZERO
 
 	muzzle.position = Vector3(0.23, 1.32, -0.62)
 	add_child(muzzle)
 	_update_weapon_mount()
-
-
-func _find_weapon_hardpoint(root: Node3D) -> Node3D:
-	var exact_names := [
-		"hp_weapon_right",
-		"hp_hold_r",
-		"hold_r",
-		"weapon_right",
-		"hp_r_hand",
-	]
-	for name_value in exact_names:
-		var node := root.find_child(name_value, true, false)
-		if node is Node3D:
-			return node as Node3D
-
-	for node in root.find_children("*", "Node3D", true, false):
-		if not node is Node3D:
-			continue
-		var lowered := String(node.name).to_lower()
-		if "weapon" in lowered and ("right" in lowered or "_r" in lowered):
-			return node as Node3D
-	return null
 
 
 func _find_bone(skeleton: Skeleton3D, candidates: Array[String]) -> int:
@@ -185,37 +155,19 @@ func _update_weapon_mount() -> void:
 	if weapon_visual == null or not is_instance_valid(weapon_visual):
 		return
 
-	if weapon_hardpoint != null and is_instance_valid(weapon_hardpoint):
-		var hardpoint_transform := weapon_hardpoint.global_transform
-		weapon_mount.global_transform = Transform3D(
-			hardpoint_transform.basis.orthonormalized(),
-			hardpoint_transform.origin
-		)
-	elif character_skeleton != null and right_hand_bone >= 0:
-		var right_transform := _bone_world_transform(right_hand_bone)
-		var right_position := right_transform.origin
-		var mount_basis := right_transform.basis.orthonormalized()
-
-		if left_hand_bone >= 0:
-			var left_position := _bone_world_transform(left_hand_bone).origin
-			var hand_direction := left_position - right_position
-			if hand_direction.length_squared() > 0.01:
-				# Fallback attachment: infer rifle direction from the animated
-				# trigger/support hands so the gun at least travels with the
-				# pose instead of floating independently of it.
-				weapon_mount.global_position = right_position
-				weapon_mount.look_at(left_position, Vector3.UP)
-			else:
-				weapon_mount.global_transform = Transform3D(mount_basis, right_position)
-		else:
-			weapon_mount.global_transform = Transform3D(mount_basis, right_position)
+	var attachment_bone := weapon_hold_bone if weapon_hold_bone >= 0 else fallback_wrist_bone
+	if character_skeleton != null and attachment_bone >= 0:
+		weapon_mount.global_transform = _bone_world_transform(attachment_bone)
 	else:
 		weapon_mount.position = Vector3(0.22, 1.22, -0.30)
 		weapon_mount.rotation = Vector3(deg_to_rad(-8.0), 0.0, 0.0)
 
+	# Projectile direction is still solved against the target, so this transform
+	# only governs the visible rifle/muzzle presentation.
 	var barrel_forward := -weapon_mount.global_basis.z.normalized()
 	muzzle.global_position = weapon_mount.global_position + barrel_forward * 0.64
 	muzzle.global_basis = weapon_mount.global_basis.orthonormalized()
+
 
 func _build_combat_fx() -> void:
 	fire_audio.stream = SwgAssetBridge.audio_for_role("blasterRifle")
@@ -527,37 +479,27 @@ func _begin_death(direction: Vector3) -> void:
 	fire_animation_timer = 0.0
 	squad_manager.release_fire_slot(self)
 	squad_manager.release_cover(self)
+	death_timer = 1.9
 	death_roll = -1.0 if rng.randf() < 0.5 else 1.0
 	velocity = Vector3.ZERO
 	collision_layer = 0
 	collision_mask = 0
-
-	if _animation_exists("death"):
-		var clip_length := _animation_length("death")
-		death_timer = clampf(clip_length + 0.35, 1.5, 3.2)
-		_set_animation("death", false)
-		if animation_player != null:
-			animation_player.speed_scale = 1.0
-	else:
-		death_timer = 2.2
-		if animation_player != null:
-			animation_player.stop()
-
+	if animation_player != null:
+		animation_player.stop()
 	squad_manager.member_died(self, squad_id)
 	killed.emit(self)
 
 func _update_death(delta: float) -> void:
 	death_timer -= delta
-	if _animation_exists("death") and active_animation == "death":
-		# Let the authored SWG pose drive the body and only settle it onto the
-		# floor slightly so it does not hover due to root-motion differences.
-		visual_root.position.y = lerpf(visual_root.position.y, -0.08, 1.0 - exp(-delta * 3.5))
-	else:
-		visual_root.rotation.z = lerpf(visual_root.rotation.z, death_roll * 1.28, 1.0 - exp(-delta * 7.0))
-		visual_root.rotation.x = lerpf(visual_root.rotation.x, deg_to_rad(12.0), 1.0 - exp(-delta * 5.0))
-		visual_root.position.y = lerpf(visual_root.position.y, -0.22, 1.0 - exp(-delta * 5.0))
+	# Controlled fall until a verified SWG transition/ragdoll is available.
+	# Do not play static incapacitated/death poses as animations: they snap the
+	# character horizontal in mid-air.
+	visual_root.rotation.z = lerpf(visual_root.rotation.z, death_roll * 1.18, 1.0 - exp(-delta * 6.5))
+	visual_root.rotation.x = lerpf(visual_root.rotation.x, deg_to_rad(10.0), 1.0 - exp(-delta * 5.0))
+	visual_root.position.y = lerpf(visual_root.position.y, -0.28, 1.0 - exp(-delta * 4.5))
 	if death_timer <= 0.0:
 		queue_free()
+
 
 func _squad_separation() -> Vector3:
 	var separation := Vector3.ZERO
@@ -634,53 +576,50 @@ func _avoid_obstacle(direction: Vector3) -> Vector3:
 
 func _update_animation(delta: float) -> void:
 	visual_root.rotation.x = lerpf(visual_root.rotation.x, 0.0, 1.0 - exp(-delta * 10.0))
+	visual_root.rotation.y = lerp_angle(visual_root.rotation.y, 0.0, 1.0 - exp(-delta * 12.0))
 
 	var planar_velocity := Vector3(velocity.x, 0.0, velocity.z)
 	var planar_speed := planar_velocity.length()
 	var local_velocity := global_basis.inverse() * planar_velocity
 
-	# The gameplay body may keep facing the player for perception/aiming, but a
-	# moving humanoid should visually turn toward the direction its legs are
-	# travelling. This prevents the old full-speed backwards "moonwalk".
-	var target_visual_yaw := 0.0
-	if planar_speed > 0.28 and target != null and is_instance_valid(target) and combat_move_mode != 0:
-		var local_direction := local_velocity.normalized()
-		target_visual_yaw = atan2(-local_direction.x, -local_direction.z)
-	visual_root.rotation.y = lerp_angle(
-		visual_root.rotation.y,
-		target_visual_yaw,
-		1.0 - exp(-delta * (9.5 if planar_speed > 0.28 else 13.0))
-	)
-
-	var lean := clampf(-local_velocity.x / maxf(move_speed, 0.1), -1.0, 1.0) * 0.045
+	var lean := clampf(-local_velocity.x / maxf(move_speed, 0.1), -1.0, 1.0) * 0.035
 	visual_root.rotation.z = lerpf(visual_root.rotation.z, lean, 1.0 - exp(-delta * 9.0))
 
 	if animation_player == null:
-		if planar_speed > 0.25:
-			visual_root.position.y = sin(Time.get_ticks_msec() * 0.010 + float(get_instance_id() % 100)) * 0.018
-		else:
-			visual_root.position.y = lerpf(visual_root.position.y, 0.0, 1.0 - exp(-delta * 9.0))
 		return
 
-	# A real SWG rifle fire clip is imported when available. Hold it through the
-	# short burst so the arms/shoulders visibly participate in shooting instead
-	# of the gun merely emitting bolts from a mannequin pose.
 	if fire_animation_timer > 0.0 and _animation_exists("fire"):
 		_set_animation("fire", false)
 		animation_player.speed_scale = 1.0
 		return
 
-	if planar_speed < 0.25:
+	if planar_speed < 0.22:
 		_set_animation("idle")
 		animation_player.speed_scale = 1.0
-	elif planar_speed < move_speed * 0.82:
-		_set_animation("walk")
-		var authored_walk_speed := walk_clip_speed if walk_clip_speed > 0.1 else move_speed * 0.62
-		animation_player.speed_scale = clampf(planar_speed / maxf(authored_walk_speed, 0.1), 0.72, 1.22)
+		return
+
+	var requested := "walk_forward"
+	var fallback_speed := move_speed * 0.62
+
+	# Godot local -Z is forward. Pick the actual SWG directional rifle clip
+	# instead of playing one forward run animation for every velocity vector.
+	if absf(local_velocity.x) > absf(local_velocity.z) * 0.75:
+		requested = "strafe_right" if local_velocity.x > 0.0 else "strafe_left"
+		fallback_speed = move_speed * 0.58
+	elif local_velocity.z > 0.15:
+		requested = "walk_back"
+		fallback_speed = move_speed * 0.55
+	elif planar_speed > move_speed * 0.82:
+		requested = "run_forward"
+		fallback_speed = move_speed
 	else:
-		_set_animation("run")
-		var authored_run_speed := run_clip_speed if run_clip_speed > 0.1 else move_speed
-		animation_player.speed_scale = clampf(planar_speed / maxf(authored_run_speed, 0.1), 0.72, 1.18)
+		requested = "walk_forward"
+
+	_set_animation(requested)
+	var authored_speed := SwgAssetBridge.stormtrooper_animation_speed(requested)
+	if authored_speed <= 0.1:
+		authored_speed = fallback_speed
+	animation_player.speed_scale = clampf(planar_speed / maxf(authored_speed, 0.1), 0.72, 1.18)
 
 
 func _animation_exists(requested: String) -> bool:
@@ -692,21 +631,6 @@ func _animation_exists(requested: String) -> bool:
 		if String(candidate).to_lower().contains(requested):
 			return true
 	return false
-
-
-func _animation_length(requested: String) -> float:
-	if animation_player == null:
-		return 0.0
-	var selected := requested
-	if not animation_player.has_animation(selected):
-		for candidate in animation_player.get_animation_list():
-			if String(candidate).to_lower().contains(requested):
-				selected = String(candidate)
-				break
-	if not animation_player.has_animation(selected):
-		return 0.0
-	var clip := animation_player.get_animation(selected)
-	return clip.length if clip != null else 0.0
 
 
 func _set_animation(requested: String, loop: bool = true) -> void:
