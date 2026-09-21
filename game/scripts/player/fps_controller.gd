@@ -10,14 +10,14 @@ const STAND := "stand"
 const CROUCH := "crouch"
 const PRONE := "prone"
 
-@export var walk_speed := 6.2
-@export var sprint_speed := 10.5
-@export var crouch_speed := 3.4
-@export var prone_speed := 1.65
-@export var ground_acceleration := 34.0
-@export var ground_deceleration := 40.0
-@export var air_acceleration := 5.5
-@export var jump_velocity := 6.2
+@export var walk_speed := 4.8
+@export var sprint_speed := 7.4
+@export var crouch_speed := 2.7
+@export var prone_speed := 1.35
+@export var ground_acceleration := 27.0
+@export var ground_deceleration := 34.0
+@export var air_acceleration := 4.4
+@export var jump_velocity := 5.55
 @export var jump_buffer_window := 0.12
 @export var mouse_sensitivity := 0.00175
 @export var step_height := 0.42
@@ -47,6 +47,8 @@ var last_move_input := Vector2.ZERO
 var bob_time := 0.0
 var landing_kick := 0.0
 var damage_roll := 0.0
+var recoil_pitch_offset := 0.0
+var recoil_yaw_offset := 0.0
 var was_grounded := false
 var footstep_distance := 0.0
 var footstep_index := 0
@@ -57,6 +59,7 @@ var stand_collision := CollisionShape3D.new()
 var crouch_collision := CollisionShape3D.new()
 var prone_collision := CollisionShape3D.new()
 var head := Node3D.new()
+var recoil_pivot := Node3D.new()
 var camera := Camera3D.new()
 var weapons := WeaponController.new()
 
@@ -110,7 +113,8 @@ func _build_camera() -> void:
 	camera.fov = 80.0
 	camera.near = 0.05
 	camera.current = true
-	head.add_child(camera)
+	head.add_child(recoil_pivot)
+	recoil_pivot.add_child(camera)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
@@ -130,6 +134,10 @@ func _physics_process(delta: float) -> void:
 	physics_tick_count += 1
 	jump_cooldown = maxf(0.0, jump_cooldown - delta)
 	jump_buffer = maxf(0.0, jump_buffer - delta)
+	recoil_pitch_offset = lerpf(recoil_pitch_offset, 0.0, 1.0 - exp(-delta * 15.0))
+	recoil_yaw_offset = lerpf(recoil_yaw_offset, 0.0, 1.0 - exp(-delta * 17.0))
+	recoil_pivot.rotation.x = recoil_pitch_offset
+	recoil_pivot.rotation.y = recoil_yaw_offset
 	_update_health_regen(delta)
 
 	if active_vehicle != null and is_instance_valid(active_vehicle):
@@ -235,8 +243,8 @@ func _update_camera_motion(delta: float, target_speed: float, sprinting: bool) -
 	elif stance == PRONE:
 		bob_strength = 0.0
 
-	var bob_x := sin(bob_time) * 0.018 * bob_strength
-	var bob_y := absf(cos(bob_time * 2.0)) * 0.022 * bob_strength
+	var bob_x := sin(bob_time) * 0.011 * bob_strength
+	var bob_y := absf(cos(bob_time * 2.0)) * 0.014 * bob_strength
 	landing_kick = lerpf(landing_kick, 0.0, 1.0 - exp(-delta * 13.0))
 	damage_roll = lerpf(damage_roll, 0.0, 1.0 - exp(-delta * 10.0))
 	var target_camera_offset := Vector3(bob_x, bob_y - landing_kick, 0.0)
@@ -422,9 +430,19 @@ func _update_vehicle_mode() -> void:
 		head.position.y = lerpf(head.position.y, 0.12, 0.35)
 
 func add_recoil(pitch_degrees: float, yaw_degrees: float) -> void:
-	pitch = clampf(pitch - deg_to_rad(pitch_degrees), deg_to_rad(-88.0), deg_to_rad(88.0))
-	head.rotation.x = pitch
-	rotate_y(deg_to_rad(yaw_degrees))
+	# Positive X pitch points the camera upward in Godot. Keep recoil on a
+	# spring pivot so shots climb and then settle instead of permanently
+	# dragging the player's look toward the ground.
+	recoil_pitch_offset = clampf(
+		recoil_pitch_offset + deg_to_rad(pitch_degrees),
+		deg_to_rad(-1.0),
+		deg_to_rad(4.5)
+	)
+	recoil_yaw_offset = clampf(
+		recoil_yaw_offset + deg_to_rad(yaw_degrees),
+		deg_to_rad(-1.8),
+		deg_to_rad(1.8)
+	)
 
 func _update_health_regen(delta: float) -> void:
 	health_regen_wait = maxf(0.0, health_regen_wait - delta)
