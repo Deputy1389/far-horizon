@@ -32,6 +32,8 @@ var muzzle_flash_light := OmniLight3D.new()
 var fire_audio := AudioStreamPlayer.new()
 var muzzle_flash_time := 0.0
 var viewmodel_kick := 0.0
+var viewmodel_recoil_pitch := 0.0
+var viewmodel_recoil_yaw := 0.0
 var base_fov := 80.0
 
 func configure(view_camera: Camera3D, body: CharacterBody3D) -> void:
@@ -217,6 +219,8 @@ func _process(delta: float) -> void:
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 15.0))
 
 	viewmodel_kick = lerpf(viewmodel_kick, 0.0, 1.0 - exp(-delta * 18.0))
+	viewmodel_recoil_pitch = lerpf(viewmodel_recoil_pitch, 0.0, 1.0 - exp(-delta * 17.0))
+	viewmodel_recoil_yaw = lerpf(viewmodel_recoil_yaw, 0.0, 1.0 - exp(-delta * 19.0))
 	motion_time += delta * (2.1 + planar_speed * 0.85)
 	var target_offset := weapon.ads_offset if aiming else weapon.viewmodel_offset
 	if scoped_ads:
@@ -238,9 +242,10 @@ func _process(delta: float) -> void:
 	target_offset += Vector3(0.0, 0.0, viewmodel_kick)
 	viewmodel.position = viewmodel.position.lerp(target_offset, 1.0 - exp(-delta * 18.0))
 	var target_roll := deg_to_rad(-8.0) if sprint_presented else 0.0
-	var target_pitch := deg_to_rad(10.0) if sprint_presented else 0.0
+	var target_pitch := (deg_to_rad(10.0) if sprint_presented else 0.0) + viewmodel_recoil_pitch
 	viewmodel.rotation.z = lerpf(viewmodel.rotation.z, target_roll, 1.0 - exp(-delta * 12.0))
-	viewmodel.rotation.x = lerpf(viewmodel.rotation.x, target_pitch, 1.0 - exp(-delta * 12.0))
+	viewmodel.rotation.x = lerpf(viewmodel.rotation.x, target_pitch, 1.0 - exp(-delta * 15.0))
+	viewmodel.rotation.y = lerpf(viewmodel.rotation.y, viewmodel_recoil_yaw, 1.0 - exp(-delta * 17.0))
 	arms_root.rotation.z = lerpf(arms_root.rotation.z, target_roll * 0.45, 1.0 - exp(-delta * 10.0))
 
 	if enabled and Input.is_action_pressed("fire") and cooldown <= 0.0 and not overheated and not venting:
@@ -307,7 +312,17 @@ func _fire() -> void:
 		overheated = true
 	heat_changed.emit(heat, overheated)
 
-	viewmodel_kick = minf(viewmodel_kick + (0.022 if aiming else 0.038), 0.08)
+	viewmodel_kick = minf(viewmodel_kick + (0.018 if aiming else 0.032), 0.07)
+	viewmodel_recoil_pitch = clampf(
+		viewmodel_recoil_pitch + deg_to_rad(1.15 if aiming else 1.75),
+		0.0,
+		deg_to_rad(6.0)
+	)
+	viewmodel_recoil_yaw = clampf(
+		viewmodel_recoil_yaw + deg_to_rad(rng.randf_range(-0.45, 0.45)),
+		deg_to_rad(-2.0),
+		deg_to_rad(2.0)
+	)
 	muzzle_flash_time = 0.045
 	muzzle_flash_mesh.visible = true
 	muzzle_flash_light.visible = true
