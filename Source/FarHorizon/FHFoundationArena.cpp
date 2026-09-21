@@ -14,6 +14,7 @@
 #include "Engine/World.h"
 #include "NavMesh/NavMeshBoundsVolume.h"
 #include "NavigationSystem.h"
+#include "UObject/SoftObjectPath.h"
 
 AFHFoundationArena::AFHFoundationArena()
 {
@@ -214,8 +215,30 @@ void AFHFoundationArena::SpawnEnemy()
     Params.SpawnCollisionHandlingOverride =
         ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
+    const FVector SpawnLocation(1500.0, 250.0, 110.0);
+    const FRotator SpawnRotation(0.0f, 180.0f, 0.0f);
+
+    const FSoftClassPath EpicNpcPath(
+        TEXT("/Game/Variant_Shooter/Blueprints/AI/BP_ShooterNPC.BP_ShooterNPC_C"));
+
+    if (UClass* EpicNpcClass = EpicNpcPath.TryLoadClass<APawn>())
+    {
+        World->SpawnActor<APawn>(
+            EpicNpcClass,
+            SpawnLocation,
+            SpawnRotation,
+            Params);
+
+        UE_LOG(
+            LogTemp,
+            Display,
+            TEXT("Far Horizon: spawned Epic Shooter NPC presentation/AI foundation."));
+
+        return;
+    }
+
     World->SpawnActor<AFHEnemyCharacter>(
-        FVector(1500.0, 250.0, 110.0),
-        FRotator(0.0f, 180.0f, 0.0f),
+        SpawnLocation,
+        SpawnRotation,
         Params);
 }
