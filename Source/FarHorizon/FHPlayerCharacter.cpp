@@ -5,6 +5,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -39,7 +40,64 @@ AFHPlayerCharacter::AFHPlayerCharacter()
 
     WeaponMuzzle = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponMuzzle"));
     WeaponMuzzle->SetupAttachment(WeaponRoot);
-    WeaponMuzzle->SetRelativeLocation(FVector(55.0, 0.0, 0.0));
+    WeaponMuzzle->SetRelativeLocation(FVector(75.0, 0.0, 0.0));
+
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/Cube.Cube"));
+    UStaticMesh* Cylinder = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+
+    auto AddWeaponPart = [this](
+        const TCHAR* Name,
+        UStaticMesh* Mesh,
+        const FVector& Location,
+        const FVector& Scale,
+        const FRotator& Rotation = FRotator::ZeroRotator)
+    {
+        if (!Mesh)
+        {
+            return;
+        }
+
+        UStaticMeshComponent* Part =
+            CreateDefaultSubobject<UStaticMeshComponent>(Name);
+        Part->SetupAttachment(WeaponRoot);
+        Part->SetStaticMesh(Mesh);
+        Part->SetRelativeLocation(Location);
+        Part->SetRelativeScale3D(Scale);
+        Part->SetRelativeRotation(Rotation);
+        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Part->SetCastShadow(false);
+        Part->SetOnlyOwnerSee(true);
+    };
+
+    AddWeaponPart(
+        TEXT("WeaponReceiver"),
+        Cube,
+        FVector(24.0, 0.0, 0.0),
+        FVector(0.42, 0.075, 0.09));
+
+    AddWeaponPart(
+        TEXT("WeaponBarrel"),
+        Cylinder,
+        FVector(61.0, 0.0, 0.0),
+        FVector(0.045, 0.045, 0.35),
+        FRotator(0.0, 90.0, 0.0));
+
+    AddWeaponPart(
+        TEXT("WeaponStock"),
+        Cube,
+        FVector(-10.0, 0.0, -4.0),
+        FVector(0.22, 0.09, 0.12),
+        FRotator(0.0, -8.0, 0.0));
+
+    AddWeaponPart(
+        TEXT("WeaponSight"),
+        Cube,
+        FVector(28.0, 0.0, 10.0),
+        FVector(0.06, 0.035, 0.07));
 
     Blaster = CreateDefaultSubobject<UFHBlasterComponent>(TEXT("Blaster"));
     Health = CreateDefaultSubobject<UFHHealthComponent>(TEXT("Health"));
