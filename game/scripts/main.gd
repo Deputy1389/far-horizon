@@ -15,7 +15,7 @@ var convoy_proxies: Dictionary = {}
 func _ready() -> void:
 	_install_input_map()
 	_build_environment()
-	_build_foundation_world()
+	await _build_foundation_world()
 
 func _build_environment() -> void:
 	var environment_node := WorldEnvironment.new()
@@ -62,6 +62,7 @@ func _build_foundation_world() -> void:
 	player = FPSController.new()
 	add_child(player)
 	player.global_position = Vector3(0.0, 6.0, 0.0)
+	player.set_physics_process(false)
 	floating_origin.track(player)
 
 	# Strategic data owns the meaningful map coordinates. The physical world is
@@ -73,6 +74,14 @@ func _build_foundation_world() -> void:
 	strategy.force_updated.connect(_on_force_updated)
 	strategy.force_destroyed.connect(_on_force_destroyed)
 	strategy.initialize_default_war()
+
+	# Put a real camera/HUD on screen before doing procedural mesh/collision work.
+	# This prevents a long-looking gray window while the first terrain ring builds.
+	hud = DebugHud.new()
+	add_child(hud)
+	hud.configure(player, floating_origin, strategy)
+	strategy.event_logged.emit("Preparing Tatooine surface and Mos Eisley combat space...")
+	await get_tree().process_frame
 
 	var rebel_node: Dictionary = strategy.nodes["rebel_outpost"]
 	var city_node: Dictionary = strategy.nodes["mos_eisley"]
@@ -109,14 +118,14 @@ func _build_foundation_world() -> void:
 	_spawn_capture_point()
 	_spawn_speeder(rebel_map)
 
-	hud = DebugHud.new()
-	add_child(hud)
-	hud.configure(player, floating_origin, strategy)
 	if capture_point != null:
 		capture_point.progress_changed.connect(hud.set_capture_progress)
 		hud.set_capture_progress(capture_point.progress / maxf(capture_point.capture_seconds, 0.001), false)
 
+	player.set_physics_process(true)
 	player.died.connect(_respawn_player)
+	strategy.event_logged.emit("Foundation ready. Follow the road south to the Imperial garrison.")
+	print("FOUNDATION_READY chunks=%d enemies=%d" % [planet.chunks.size(), squads.active_member_count()])
 
 func _spawn_enemies() -> void:
 	var positions := city.combat_spawns
