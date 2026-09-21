@@ -65,6 +65,20 @@ CHARACTER_MESH_RULES: dict[str, dict[str, Any]] = {
 }
 
 
+WEAPON_MESH_RULES: dict[str, dict[str, Any]] = {
+    "blasterRifle": {
+        "include": {"rifle": 100, "blaster": 70, "weapon": 25, "weap": 25, "wpn": 25, "stormtrooper": 20},
+        "exclude": ("scope", "barrel", "stock", "muzzle", "projectile", "ammo", "frn", "furniture", "statue", "rack", "display", "decal", "icon"),
+        "require_any": ("rifle",),
+    },
+    "blasterPistol": {
+        "include": {"pistol": 100, "blaster": 70, "weapon": 25, "weap": 25, "wpn": 25},
+        "exclude": ("scope", "barrel", "grip", "projectile", "ammo", "frn", "furniture", "statue", "rack", "display", "decal", "icon"),
+        "require_any": ("pistol",),
+    },
+}
+
+
 AUDIO_TARGETS: dict[str, tuple[str, ...]] = {
     "blasterPistol": (
         "sample/wep_blaster_fire_2.wav",
@@ -533,6 +547,31 @@ def ranked_character_meshes(entries: Iterable[AssetEntry], role: str, limit: int
     return ranked[:limit]
 
 
+def select_weapon_mesh(entries: Iterable[AssetEntry], role: str) -> AssetEntry | None:
+    rule = WEAPON_MESH_RULES.get(role)
+    if rule is None:
+        return None
+    ranked: list[tuple[int, AssetEntry]] = []
+    for entry in entries:
+        if entry.extension != ".msh":
+            continue
+        path = entry.virtual_path.lower()
+        if not path.startswith("appearance/mesh/"):
+            continue
+        if any(fragment in path for fragment in rule["exclude"]):
+            continue
+        if not any(fragment in path for fragment in rule["require_any"]):
+            continue
+        score = sum(weight for fragment, weight in rule["include"].items() if fragment in path)
+        if "l0" in path or "_l0" in path:
+            score += 18
+        if path.count("/") <= 3:
+            score += 5
+        ranked.append((score, entry))
+    ranked.sort(key=lambda item: (-item[0], -item[1].archive_rank, item[1].virtual_path))
+    return ranked[0][1] if ranked else None
+
+
 def build_manifest_asset(entry: AssetEntry, url: str) -> dict[str, Any]:
     return {
         "url": url,
@@ -977,6 +1016,44 @@ def main() -> int:
     except Exception as exc:
         print(f"MESH   proof unavailable: {exc}")
 
+    weapons: dict[str, dict[str, Any]] = {}
+    weapon_failures: dict[str, str] = {}
+    try:
+        from convert_swg_mesh import convert_from_inventory as convert_weapon_from_inventory
+
+        weapon_root = output_root / "weapon"
+        for role in WEAPON_MESH_RULES:
+            weapon_entry = select_weapon_mesh(inventory, role)
+            if weapon_entry is None:
+                weapon_failures[role] = "no suitable SWG weapon .msh candidate found"
+                print(f"WEAPON miss {role}: {weapon_failures[role]}")
+                continue
+            weapon_gltf = weapon_root / f"{role}.gltf"
+            weapon_bin = weapon_gltf.with_suffix(".bin")
+            converted_entry, weapon_summary = convert_weapon_from_inventory(
+                inventory,
+                weapon_gltf,
+                weapon_bin,
+                preferred_virtual_path=weapon_entry.virtual_path,
+            )
+            weapons[role] = {
+                "url": f"./assets/local-swg/weapon/{weapon_gltf.name}",
+                "bin": f"./assets/local-swg/weapon/{weapon_bin.name}",
+                "archive": converted_entry.archive.name,
+                "archivePath": str(converted_entry.archive),
+                "archiveRank": converted_entry.archive_rank,
+                "virtualPath": converted_entry.virtual_path,
+                **weapon_summary,
+            }
+            print(
+                f"WEAPON {role:<14} {converted_entry.archive.name} :: {converted_entry.virtual_path} "
+                f"({weapon_summary['vertices']:,} vertices)"
+            )
+    except Exception as exc:
+        for role in WEAPON_MESH_RULES:
+            weapon_failures.setdefault(role, str(exc))
+        print(f"WEAPON conversion unavailable: {exc}")
+
     characters: dict[str, dict[str, Any]] = {}
     character_failures: dict[str, str] = {}
     try:
@@ -1173,6 +1250,8 @@ def main() -> int:
         "failedRoles": failures,
         "meshCandidates": mesh_candidates,
         "meshProof": mesh_proof,
+        "weapons": weapons,
+        "weaponFailures": weapon_failures,
         "characterCandidates": character_candidates_all[:500],
         "characters": characters,
         "characterFailures": character_failures,
