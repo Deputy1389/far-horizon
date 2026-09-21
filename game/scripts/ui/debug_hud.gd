@@ -97,13 +97,15 @@ func _process(delta: float) -> void:
 	var display_velocity := player.velocity
 	if player.active_vehicle is CharacterBody3D:
 		display_velocity = (player.active_vehicle as CharacterBody3D).velocity
-	status_label.text = "STANCE %s   SPEED %.1f m/s   FPS %d   TICK %d   INPUT %.1f,%.1f   LAT %.4f  LON %.4f" % [
+	status_label.text = "STANCE %s   SPEED %.1f m/s   FPS %d   TICK %d   INPUT %.1f,%.1f   Y %.1f   FLOOR %s   LAT %.4f  LON %.4f" % [
 		player.stance.to_upper(),
 		Vector2(display_velocity.x, display_velocity.z).length(),
 		Engine.get_frames_per_second(),
 		player.physics_tick_count,
 		player.last_move_input.x,
 		player.last_move_input.y,
+		player.global_position.y,
+		"YES" if player.is_on_floor() else "NO",
 		lat_lon.x,
 		lat_lon.y,
 	]
