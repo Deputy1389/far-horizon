@@ -224,6 +224,7 @@ func _physics_process(delta: float) -> void:
 
 	if dead:
 		_update_death(delta)
+		_update_weapon_mount()
 		return
 
 	fire_cooldown = maxf(0.0, fire_cooldown - delta)
@@ -493,23 +494,38 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vec
 
 func _begin_death(direction: Vector3) -> void:
 	dead = true
+	fire_animation_timer = 0.0
 	squad_manager.release_fire_slot(self)
 	squad_manager.release_cover(self)
-	death_timer = 2.2
 	death_roll = -1.0 if rng.randf() < 0.5 else 1.0
 	velocity = Vector3.ZERO
 	collision_layer = 0
 	collision_mask = 0
-	if animation_player != null:
-		animation_player.stop()
+
+	if _animation_exists("death"):
+		var clip_length := _animation_length("death")
+		death_timer = clampf(clip_length + 0.35, 1.5, 3.2)
+		_set_animation("death", false)
+		if animation_player != null:
+			animation_player.speed_scale = 1.0
+	else:
+		death_timer = 2.2
+		if animation_player != null:
+			animation_player.stop()
+
 	squad_manager.member_died(self, squad_id)
 	killed.emit(self)
 
 func _update_death(delta: float) -> void:
 	death_timer -= delta
-	visual_root.rotation.z = lerpf(visual_root.rotation.z, death_roll * 1.28, 1.0 - exp(-delta * 7.0))
-	visual_root.rotation.x = lerpf(visual_root.rotation.x, deg_to_rad(12.0), 1.0 - exp(-delta * 5.0))
-	visual_root.position.y = lerpf(visual_root.position.y, -0.22, 1.0 - exp(-delta * 5.0))
+	if _animation_exists("death") and active_animation == "death":
+		# Let the authored SWG pose drive the body and only settle it onto the
+		# floor slightly so it does not hover due to root-motion differences.
+		visual_root.position.y = lerpf(visual_root.position.y, -0.08, 1.0 - exp(-delta * 3.5))
+	else:
+		visual_root.rotation.z = lerpf(visual_root.rotation.z, death_roll * 1.28, 1.0 - exp(-delta * 7.0))
+		visual_root.rotation.x = lerpf(visual_root.rotation.x, deg_to_rad(12.0), 1.0 - exp(-delta * 5.0))
+		visual_root.position.y = lerpf(visual_root.position.y, -0.22, 1.0 - exp(-delta * 5.0))
 	if death_timer <= 0.0:
 		queue_free()
 
@@ -646,6 +662,21 @@ func _animation_exists(requested: String) -> bool:
 		if String(candidate).to_lower().contains(requested):
 			return true
 	return false
+
+
+func _animation_length(requested: String) -> float:
+	if animation_player == null:
+		return 0.0
+	var selected := requested
+	if not animation_player.has_animation(selected):
+		for candidate in animation_player.get_animation_list():
+			if String(candidate).to_lower().contains(requested):
+				selected = String(candidate)
+				break
+	if not animation_player.has_animation(selected):
+		return 0.0
+	var clip := animation_player.get_animation(selected)
+	return clip.length if clip != null else 0.0
 
 
 func _set_animation(requested: String, loop: bool = true) -> void:
