@@ -46,6 +46,7 @@ var physics_tick_count := 0
 var last_move_input := Vector2.ZERO
 var bob_time := 0.0
 var landing_kick := 0.0
+var damage_roll := 0.0
 var was_grounded := false
 var footstep_distance := 0.0
 var footstep_index := 0
@@ -237,8 +238,10 @@ func _update_camera_motion(delta: float, target_speed: float, sprinting: bool) -
 	var bob_x := sin(bob_time) * 0.018 * bob_strength
 	var bob_y := absf(cos(bob_time * 2.0)) * 0.022 * bob_strength
 	landing_kick = lerpf(landing_kick, 0.0, 1.0 - exp(-delta * 13.0))
+	damage_roll = lerpf(damage_roll, 0.0, 1.0 - exp(-delta * 10.0))
 	var target_camera_offset := Vector3(bob_x, bob_y - landing_kick, 0.0)
 	camera.position = camera.position.lerp(target_camera_offset, 1.0 - exp(-delta * 18.0))
+	camera.rotation.z = lerpf(camera.rotation.z, damage_roll, 1.0 - exp(-delta * 18.0))
 
 
 func _update_footsteps(delta: float, sprinting: bool) -> void:
@@ -432,8 +435,12 @@ func _update_health_regen(delta: float) -> void:
 	if absf(health - previous) >= 0.01:
 		health_changed.emit(health, maximum_health)
 
-func apply_damage(amount: float, _hit_position := Vector3.ZERO, _direction := Vector3.ZERO, _source = null) -> void:
+func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vector3.ZERO, _source = null) -> void:
 	health = maxf(0.0, health - amount)
+	landing_kick = maxf(landing_kick, 0.035)
+	if direction.length_squared() > 0.001:
+		var local_direction := global_basis.inverse() * direction.normalized()
+		damage_roll = clampf(-local_direction.x * 0.075, -0.075, 0.075)
 	health_regen_wait = health_regen_delay
 	health_changed.emit(health, maximum_health)
 	damaged.emit(amount)
