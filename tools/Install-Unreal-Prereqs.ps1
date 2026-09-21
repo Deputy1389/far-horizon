@@ -2,54 +2,56 @@ param()
 
 $ErrorActionPreference = "Stop"
 
-$pf86 = [Environment]::GetFolderPath("ProgramFilesX86")
-$vswhere = Join-Path $pf86 "Microsoft Visual Studio\Installer\vswhere.exe"
-$setup = Join-Path $pf86 "Microsoft Visual Studio\Installer\setup.exe"
+function Test-NetFx48Sdk {
+    $keys = @(
+        "HKLM:\SOFTWARE\Microsoft\Microsoft SDKs\NETFXSDK\4.8\WinSDK-NetFx40Tools-x64",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Microsoft SDKs\NETFXSDK\4.8\WinSDK-NetFx40Tools-x64"
+    )
 
-if (-not (Test-Path $vswhere)) {
-    throw "Visual Studio Installer was not found. Install Visual Studio Build Tools first."
+    foreach ($key in $keys) {
+        if (Test-Path $key) {
+            try {
+                $folder = (Get-ItemProperty $key -ErrorAction Stop).InstallationFolder
+                if ($folder -and (Test-Path $folder)) {
+                    return $true
+                }
+            } catch {
+            }
+        }
+    }
+
+    $fallback = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.8 Tools"
+    return (Test-Path $fallback)
 }
 
-if (-not (Test-Path $setup)) {
-    throw "Visual Studio Installer setup.exe was not found at '$setup'."
-}
+if (Test-NetFx48Sdk) {
+    Write-Host ".NET Framework 4.8 SDK is already installed."
+} else {
+    Write-Host "Downloading the official Microsoft .NET Framework 4.8 Developer Pack..."
+    Write-Host "This bypasses Visual Studio Installer entirely."
 
-$installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-$installPath = [string]($installPath | Select-Object -First 1)
+    $downloadUrl = "https://go.microsoft.com/fwlink/?linkid=2088517"
+    $installer = Join-Path $env:TEMP "ndp48-devpack-enu.exe"
 
-if ([string]::IsNullOrWhiteSpace($installPath)) {
-    throw "No Visual Studio installation with C++ build tools was found."
-}
+    if (Test-Path $installer) {
+        Remove-Item $installer -Force
+    }
 
-Write-Host "Visual Studio installation: $installPath"
+    Invoke-WebRequest -UseBasicParsing -Uri $downloadUrl -OutFile $installer
 
-$alreadyInstalled = & $vswhere -latest -products * -requires Microsoft.Net.Component.4.8.SDK -property installationPath
-$alreadyInstalled = [string]($alreadyInstalled | Select-Object -First 1)
+    if (-not (Test-Path $installer)) {
+        throw "The .NET Framework 4.8 Developer Pack download did not produce '$installer'."
+    }
 
-if ([string]::IsNullOrWhiteSpace($alreadyInstalled)) {
-    Write-Host "Adding Unreal-required .NET Framework 4.8 development components..."
+    $length = (Get-Item $installer).Length
+    if ($length -lt 1000000) {
+        throw "The downloaded Developer Pack is unexpectedly small ($length bytes)."
+    }
 
-    $configPath = Join-Path $env:TEMP "FarHorizon-Unreal-Prereqs.vsconfig"
-    $config = @{
-        version = "1.0"
-        components = @(
-            "Microsoft.Net.Component.4.8.SDK",
-            "Microsoft.Net.Component.4.8.TargetingPack",
-            "Microsoft.Net.ComponentGroup.4.8.DeveloperTools"
-        )
-    } | ConvertTo-Json -Depth 4
-
-    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($configPath, $config, $utf8NoBom)
-
-    # Microsoft documents setup.exe modify + --installPath + --config for
-    # adding components to an existing Visual Studio installation.
-    $argumentLine = 'modify --installPath "{0}" --config "{1}" --passive --norestart' -f $installPath, $configPath
-
-    Write-Host "Launching Visual Studio Installer with a generated .vsconfig..."
+    Write-Host "Installing .NET Framework 4.8 Developer Pack..."
     $startParams = @{
-        FilePath = $setup
-        ArgumentList = $argumentLine
+        FilePath = $installer
+        ArgumentList = @("/install", "/quiet", "/norestart")
         Verb = "RunAs"
         PassThru = $true
         Wait = $true
@@ -57,22 +59,19 @@ if ([string]::IsNullOrWhiteSpace($alreadyInstalled)) {
     $process = Start-Process @startParams
 
     if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
-        throw "Visual Studio Installer exited with code $($process.ExitCode). Config: $configPath"
+        throw "The .NET Framework 4.8 Developer Pack installer exited with code $($process.ExitCode). Installer: $installer"
     }
-} else {
-    Write-Host ".NET Framework 4.8 SDK is already installed; skipping Visual Studio modification."
-}
 
-$verifiedPath = & $vswhere -latest -products * -requires Microsoft.Net.Component.4.8.SDK -property installationPath
-$verifiedPath = [string]($verifiedPath | Select-Object -First 1)
+    Start-Sleep -Seconds 2
 
-if ([string]::IsNullOrWhiteSpace($verifiedPath)) {
-    throw "Visual Studio Installer returned successfully, but the .NET Framework 4.8 SDK is still not detected. Open Visual Studio Installer > Modify > Individual components and select '.NET Framework 4.8 SDK'."
+    if (-not (Test-NetFx48Sdk)) {
+        throw "The Developer Pack installer finished, but the .NET Framework 4.8 SDK is still not detectable."
+    }
 }
 
 Write-Host ""
 Write-Host "UNREAL_NETFX_PREREQS_READY"
-Write-Host ".NET Framework 4.8 SDK detected at: $verifiedPath"
+Write-Host ".NET Framework 4.8 SDK is installed."
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $core = Join-Path $PSScriptRoot "Run-Dev-Agent-Core.ps1"
