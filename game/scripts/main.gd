@@ -174,7 +174,7 @@ func _build_foundation_world() -> void:
 
 func _spawn_enemies() -> void:
 	var positions := city.combat_spawns
-	for index in range(min(positions.size(), 4)):
+	for index in range(min(positions.size(), 3)):
 		var squad_id := "garrison_a" if index < 4 else "garrison_b"
 		_spawn_enemy(positions[index], squad_id)
 
@@ -187,8 +187,8 @@ func _spawn_enemies() -> void:
 	if forward.length_squared() > 1.0:
 		forward = forward.normalized()
 		var side := Vector3.UP.cross(forward).normalized()
-		var distances := [48.0, 58.0, 68.0]
-		var lateral := [-5.0, 4.0, 0.0]
+		var distances := [50.0, 62.0]
+		var lateral := [-5.0, 5.0]
 		for index in range(distances.size()):
 			var patrol_distance: float = float(distances[index])
 			var lateral_offset: float = float(lateral[index])
