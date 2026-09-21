@@ -80,20 +80,26 @@ func _build_first_person_arms() -> void:
 	glove_material.roughness = 0.72
 
 	var right_sleeve := MeshInstance3D.new()
-	var right_mesh := BoxMesh.new()
-	right_mesh.size = Vector3(0.11, 0.12, 0.46)
+	var right_mesh := CylinderMesh.new()
+	right_mesh.top_radius = 0.055
+	right_mesh.bottom_radius = 0.072
+	right_mesh.height = 0.44
+	right_mesh.radial_segments = 8
 	right_sleeve.mesh = right_mesh
-	right_sleeve.position = Vector3(0.17, -0.13, 0.16)
-	right_sleeve.rotation = Vector3(deg_to_rad(-13.0), deg_to_rad(-8.0), deg_to_rad(-6.0))
+	right_sleeve.position = Vector3(0.17, -0.15, 0.13)
+	right_sleeve.rotation = Vector3(deg_to_rad(72.0), deg_to_rad(-8.0), deg_to_rad(-6.0))
 	right_sleeve.material_override = sleeve_material
 	arms_root.add_child(right_sleeve)
 
 	var left_sleeve := MeshInstance3D.new()
-	var left_mesh := BoxMesh.new()
-	left_mesh.size = Vector3(0.105, 0.115, 0.42)
+	var left_mesh := CylinderMesh.new()
+	left_mesh.top_radius = 0.052
+	left_mesh.bottom_radius = 0.068
+	left_mesh.height = 0.40
+	left_mesh.radial_segments = 8
 	left_sleeve.mesh = left_mesh
-	left_sleeve.position = Vector3(-0.12, -0.10, -0.02)
-	left_sleeve.rotation = Vector3(deg_to_rad(-20.0), deg_to_rad(12.0), deg_to_rad(8.0))
+	left_sleeve.position = Vector3(-0.12, -0.12, -0.04)
+	left_sleeve.rotation = Vector3(deg_to_rad(68.0), deg_to_rad(12.0), deg_to_rad(8.0))
 	left_sleeve.material_override = sleeve_material
 	arms_root.add_child(left_sleeve)
 
