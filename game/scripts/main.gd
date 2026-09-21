@@ -178,6 +178,22 @@ func _spawn_enemies() -> void:
 		var squad_id := "garrison_a" if index < 4 else "garrison_b"
 		_spawn_enemy(positions[index], squad_id)
 
+	# Guarantee an obvious first contact on the approach to the objective.
+	# The garrison ring can be hidden behind procedural buildings, so a small
+	# patrol is placed directly between the forward spawn and the city center.
+	var garrison := city.garrison_global_position()
+	var forward := garrison - player.global_position
+	forward.y = 0.0
+	if forward.length_squared() > 1.0:
+		forward = forward.normalized()
+		var side := Vector3.UP.cross(forward).normalized()
+		var distances := [48.0, 58.0, 68.0]
+		var lateral := [-5.0, 4.0, 0.0]
+		for index in range(distances.size()):
+			var patrol_position := player.global_position + forward * distances[index] + side * lateral[index]
+			patrol_position.y = planet.surface_y(patrol_position.x, patrol_position.z) + 0.15
+			_spawn_enemy(patrol_position, "approach_patrol")
+
 func _spawn_enemy(spawn_position: Vector3, squad_id: String) -> void:
 	var soldier := EnemySoldier.new()
 	add_child(soldier)
