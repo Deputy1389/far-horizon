@@ -4,6 +4,7 @@
 #include "GameFramework/Character.h"
 #include "FHEnemyCharacter.generated.h"
 
+class UAnimationAsset;
 class UFHBlasterComponent;
 class UFHHealthComponent;
 class USceneComponent;
@@ -16,6 +17,8 @@ class FARHORIZON_API AFHEnemyCharacter : public ACharacter
 public:
     AFHEnemyCharacter();
 
+    virtual void Tick(float DeltaSeconds) override;
+
     bool TryFireAt(AActor* Target);
 
     UFUNCTION(BlueprintPure, Category="Combat")
@@ -25,6 +28,8 @@ protected:
     virtual void BeginPlay() override;
 
 private:
+    void UpdatePresentationAnimation(float DeltaSeconds);
+
     UFUNCTION()
     void HandleDeath(AActor* DeadActor);
 
@@ -36,4 +41,22 @@ private:
 
     UPROPERTY(VisibleAnywhere, Category="Combat")
     TObjectPtr<USceneComponent> WeaponMuzzle;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UAnimationAsset> IdleAnimation;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UAnimationAsset> WalkAnimation;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UAnimationAsset> RunAnimation;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UAnimationAsset> FireAnimation;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UAnimationAsset> CurrentPresentationAnimation;
+
+    bool bUsingLocalSwgPresentation = false;
+    float FirePresentationRemaining = 0.0f;
 };
