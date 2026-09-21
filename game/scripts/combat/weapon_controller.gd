@@ -23,6 +23,13 @@ var aim_blend := 0.0
 
 var viewmodel := Node3D.new()
 var arms_root := Node3D.new()
+var first_person_rig: Node3D
+var first_person_animation: AnimationPlayer
+var first_person_skeleton: Skeleton3D
+var first_person_hold_bone := -1
+var first_person_active_animation := ""
+var first_person_fire_timer := 0.0
+var first_person_weapon_mount := Node3D.new()
 var scope_layer := CanvasLayer.new()
 var scope_rect := ColorRect.new()
 var muzzle := Marker3D.new()
@@ -44,6 +51,7 @@ func configure(view_camera: Camera3D, body: CharacterBody3D) -> void:
 	rng.seed = 0xF4A20
 	camera.add_child(viewmodel)
 	viewmodel.add_child(arms_root)
+	viewmodel.add_child(first_person_weapon_mount)
 	viewmodel.add_child(weapon_mesh)
 	viewmodel.add_child(muzzle)
 	viewmodel.add_child(fire_audio)
@@ -72,38 +80,82 @@ func set_enabled(value: bool) -> void:
 		scope_layer.visible = false
 
 func _build_first_person_arms() -> void:
-	# Hide primitive surrogate anatomy until we have a proper skinned
-	# first-person character rig. The imported weapon is more convincing on its
-	# own than box/cylinder hands that visibly detach or intersect the rifle.
-	arms_root.visible = false
-
-func _add_arm_segment(from: Vector3, to: Vector3, radius: float, material: Material) -> void:
-	var direction := to - from
-	var length := direction.length()
-	if length <= 0.001:
+	# Use a real SWG skinned hand mesh on the all_b skeleton. The previous
+	# primitive boxes/cylinders were intentionally removed; this rig can now
+	# play the same rifle poses as the third-person character.
+	first_person_rig = SwgAssetBridge.instantiate_character("firstPersonHands")
+	if first_person_rig == null:
+		arms_root.visible = false
 		return
-	var segment := MeshInstance3D.new()
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = radius * 0.88
-	mesh.bottom_radius = radius
-	mesh.height = length
-	mesh.radial_segments = 10
-	segment.mesh = mesh
-	segment.position = (from + to) * 0.5
-	segment.rotation = Quaternion(Vector3.UP, direction.normalized()).get_euler()
-	segment.material_override = material
-	arms_root.add_child(segment)
+
+	arms_root.add_child(first_person_rig)
+	# Body-space offset: the hand-only mesh is authored on a full humanoid
+	# skeleton, so move its unseen root below the camera while keeping the
+	# animated hands in the lower-center view.
+	first_person_rig.position = Vector3(0.0, -1.34, 0.10)
+
+	var players := first_person_rig.find_children("*", "AnimationPlayer", true, false)
+	if not players.is_empty():
+		first_person_animation = players[0] as AnimationPlayer
+
+	var skeletons := first_person_rig.find_children("*", "Skeleton3D", true, false)
+	if not skeletons.is_empty():
+		first_person_skeleton = skeletons[0] as Skeleton3D
+		first_person_hold_bone = _find_first_person_bone(first_person_skeleton, ["hold_r"])
+
+	_set_first_person_animation("idle")
+	arms_root.visible = true
 
 
-func _add_hand(position: Vector3, size: Vector3, material: Material) -> void:
-	var hand := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	hand.mesh = mesh
-	hand.position = position
-	hand.rotation = Vector3(deg_to_rad(-8.0), deg_to_rad(4.0), deg_to_rad(-5.0))
-	hand.material_override = material
-	arms_root.add_child(hand)
+func _find_first_person_bone(skeleton: Skeleton3D, candidates: Array[String]) -> int:
+	for candidate in candidates:
+		var index := skeleton.find_bone(candidate)
+		if index >= 0:
+			return index
+	for index in range(skeleton.get_bone_count()):
+		var actual := skeleton.get_bone_name(index).to_lower()
+		for candidate in candidates:
+			if actual == candidate.to_lower():
+				return index
+	return -1
+
+
+func _set_first_person_animation(requested: String, loop: bool = true) -> void:
+	if first_person_animation == null or first_person_active_animation == requested:
+		return
+	var selected := requested
+	if not first_person_animation.has_animation(selected):
+		for candidate in first_person_animation.get_animation_list():
+			if String(candidate).to_lower().contains(requested):
+				selected = String(candidate)
+				break
+	if not first_person_animation.has_animation(selected):
+		return
+	var clip := first_person_animation.get_animation(selected)
+	if clip != null:
+		clip.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	first_person_active_animation = requested
+	first_person_animation.play(selected, 0.08)
+
+
+func _update_first_person_rig(delta: float) -> void:
+	first_person_fire_timer = maxf(0.0, first_person_fire_timer - delta)
+	if first_person_animation != null:
+		if first_person_fire_timer > 0.0 and first_person_animation.has_animation("fire"):
+			_set_first_person_animation("fire", false)
+		elif first_person_fire_timer <= 0.0:
+			_set_first_person_animation("idle")
+
+	if first_person_skeleton != null and first_person_hold_bone >= 0:
+		first_person_weapon_mount.global_transform = (
+			first_person_skeleton.global_transform
+			* first_person_skeleton.get_bone_global_pose(first_person_hold_bone)
+		)
+		if imported_weapon != null and is_instance_valid(imported_weapon):
+			var barrel_forward := -first_person_weapon_mount.global_basis.z.normalized()
+			muzzle.global_position = first_person_weapon_mount.global_position + barrel_forward * 0.68
+			muzzle.global_basis = first_person_weapon_mount.global_basis.orthonormalized()
+
 
 func _build_scope_overlay() -> void:
 	scope_layer.layer = 40
@@ -184,6 +236,7 @@ func _process(delta: float) -> void:
 	if muzzle_flash_time <= 0.0:
 		muzzle_flash_mesh.visible = false
 		muzzle_flash_light.visible = false
+	_update_first_person_rig(delta)
 
 	if enabled:
 		if Input.is_action_just_pressed("weapon_1"):
@@ -199,7 +252,7 @@ func _process(delta: float) -> void:
 	scope_rect.modulate.a = smoothstep(0.52, 0.96, aim_blend) if current_index == 1 else 0.0
 
 	var hide_viewmodel_for_scope := current_index == 1 and aim_blend > 0.82
-	arms_root.visible = false
+	arms_root.visible = enabled and first_person_rig != null and not hide_viewmodel_for_scope
 	if imported_weapon != null and is_instance_valid(imported_weapon):
 		imported_weapon.visible = enabled and not hide_viewmodel_for_scope
 	weapon_mesh.visible = enabled and imported_weapon == null and not hide_viewmodel_for_scope
@@ -271,10 +324,15 @@ func _rebuild_viewmodel() -> void:
 		imported_weapon = null
 
 	var role := "blasterPistol" if current_index == 0 else "blasterRifle"
-	imported_weapon = SwgAssetBridge.instantiate_weapon(role)
+	var use_rig_attachment := first_person_rig != null and first_person_skeleton != null and first_person_hold_bone >= 0
+	imported_weapon = SwgAssetBridge.instantiate_weapon(role, not use_rig_attachment)
 	if imported_weapon != null:
-		viewmodel.add_child(imported_weapon)
+		if use_rig_attachment:
+			first_person_weapon_mount.add_child(imported_weapon)
+		else:
+			viewmodel.add_child(imported_weapon)
 		imported_weapon.position = Vector3.ZERO
+		imported_weapon.rotation = Vector3.ZERO if use_rig_attachment else imported_weapon.rotation
 		weapon_mesh.visible = false
 	else:
 		weapon_mesh.visible = true
@@ -291,9 +349,11 @@ func _rebuild_viewmodel() -> void:
 
 	viewmodel.position = weapon.viewmodel_offset
 	viewmodel.scale = weapon.viewmodel_scale
-	arms_root.visible = true
+	arms_root.visible = first_person_rig != null
 	muzzle.position = Vector3(0.0, 0.0, -0.44 if current_index == 0 else -0.72)
 	fire_audio.stream = SwgAssetBridge.audio_for_role(role)
+	_update_first_person_rig(0.0)
+
 
 func _fire() -> void:
 	var weapon := current_weapon()
@@ -320,6 +380,8 @@ func _fire() -> void:
 		overheated = true
 	heat_changed.emit(heat, overheated)
 
+	first_person_fire_timer = 0.24
+	first_person_active_animation = ""
 	viewmodel_kick = minf(viewmodel_kick + (0.018 if aiming else 0.032), 0.07)
 	viewmodel_recoil_pitch = clampf(
 		viewmodel_recoil_pitch + deg_to_rad(1.15 if aiming else 1.75),
