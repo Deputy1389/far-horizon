@@ -117,7 +117,7 @@ AFHFrontierWorld::AFHFrontierWorld()
     VaporatorInstances =
         CreateInstances(
             TEXT("LocalSWGVaporators"),
-            LocalVaporator ? LocalVaporator : CylinderMesh,
+            LocalVaporator ? LocalVaporator : CylinderMesh.Get(),
             Metal,
             true);
 }
