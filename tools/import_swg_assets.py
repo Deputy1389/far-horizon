@@ -13,8 +13,10 @@ from typing import Any, Iterable
 
 try:
     from swg_twofish import decrypt_twofish_ecb
+    from dds_png import DDSDecodeError, dds_to_png_file
 except ImportError:  # pragma: no cover - supports importing as tools.import_swg_assets
     from tools.swg_twofish import decrypt_twofish_ecb
+    from tools.dds_png import DDSDecodeError, dds_to_png_file
 
 
 # This is the 128-bit key passed to Crypto::TwofishDecryptor by the Restoration
@@ -60,6 +62,56 @@ CHARACTER_MESH_RULES: dict[str, dict[str, Any]] = {
         "exclude": ("helmet", "toy", "weapon", "gun", "pile", "painting", "decor", "hook", "badge"),
         "require_any": ("stormtrooper", "trooper"),
     },
+    "firstPersonHands": {
+        "include": {"hum_m_hands": 180, "hands": 80, "hum_m": 40, "l0": 20},
+        "exclude": ("rod_", "wke_", "ith_", "gloves", "frn", "statue"),
+        "require_any": ("hands",),
+    },
+}
+
+
+WEAPON_MESH_RULES: dict[str, dict[str, Any]] = {
+    "blasterRifle": {
+        "include": {"rifle": 100, "blaster": 70, "weapon": 25, "weap": 25, "wpn": 25, "stormtrooper": 20},
+        "exclude": ("scope", "barrel", "stock", "muzzle", "projectile", "ammo", "frn", "furniture", "statue", "rack", "display", "decal", "icon"),
+        "require_any": ("rifle",),
+    },
+    "blasterPistol": {
+        "include": {"pistol": 100, "blaster": 70, "weapon": 25, "weap": 25, "wpn": 25},
+        "exclude": ("scope", "barrel", "grip", "projectile", "ammo", "frn", "furniture", "statue", "rack", "display", "decal", "icon"),
+        "require_any": ("pistol",),
+    },
+}
+
+
+AUDIO_TARGETS: dict[str, tuple[str, ...]] = {
+    "blasterPistol": (
+        "sample/wep_blaster_fire_2.wav",
+        "sample/wep_blaster_rifle_02.wav",
+    ),
+    "blasterRifle": (
+        "sample/wep_blaster_rifle_02.wav",
+        "sample/wep_blaster_fire_2.wav",
+    ),
+    "speederLoop": (
+        "sample/veh_flashspeeder_run_lp.wav",
+    ),
+    "footstepSand1": (
+        "sample/fs_out_sand_crunch_01.wav",
+    ),
+    "footstepSand2": (
+        "sample/fs_out_sand_crunch_02.wav",
+    ),
+    "footstepSand3": (
+        "sample/fs_out_sand_crunch_03.wav",
+    ),
+    "footstepSand4": (
+        "sample/fs_out_sand_crunch_04.wav",
+    ),
+    "tatooineAmbience": (
+        "sample/amb_tatooine_mos_eisley_lp.wav",
+        "sample/amb_tatooine_anchorhead_lp.wav",
+    ),
 }
 
 
@@ -516,6 +568,31 @@ def ranked_character_meshes(entries: Iterable[AssetEntry], role: str, limit: int
     return ranked[:limit]
 
 
+def select_weapon_mesh(entries: Iterable[AssetEntry], role: str) -> AssetEntry | None:
+    rule = WEAPON_MESH_RULES.get(role)
+    if rule is None:
+        return None
+    ranked: list[tuple[int, AssetEntry]] = []
+    for entry in entries:
+        if entry.extension != ".msh":
+            continue
+        path = entry.virtual_path.lower()
+        if not path.startswith("appearance/mesh/"):
+            continue
+        if any(fragment in path for fragment in rule["exclude"]):
+            continue
+        if not any(fragment in path for fragment in rule["require_any"]):
+            continue
+        score = sum(weight for fragment, weight in rule["include"].items() if fragment in path)
+        if "l0" in path or "_l0" in path:
+            score += 18
+        if path.count("/") <= 3:
+            score += 5
+        ranked.append((score, entry))
+    ranked.sort(key=lambda item: (-item[0], -item[1].archive_rank, item[1].virtual_path))
+    return ranked[0][1] if ranked else None
+
+
 def build_manifest_asset(entry: AssetEntry, url: str) -> dict[str, Any]:
     return {
         "url": url,
@@ -574,8 +651,76 @@ def is_valid_dds_file(path: Path) -> bool:
         return False
 
 
+DDSD_LINEARSIZE = 0x00080000
+
+_DDS_BLOCK_BYTES: dict[bytes, int] = {
+    b"DXT1": 8,
+    b"ATI1": 8,
+    b"BC4U": 8,
+    b"BC4S": 8,
+    b"DXT2": 16,
+    b"DXT3": 16,
+    b"DXT4": 16,
+    b"DXT5": 16,
+    b"ATI2": 16,
+    b"BC5U": 16,
+    b"BC5S": 16,
+}
+
+
+def normalize_dds_payload_for_godot(data: bytes) -> tuple[bytes, bool]:
+    """Repair legacy SWG DDS linear-size headers that modern Godot rejects.
+
+    SWG-era DDS writers commonly stored a whole mip-chain byte count in
+    dwPitchOrLinearSize. Modern Godot validates that field against the top-level
+    block-compressed image size. The pixel payload is already valid, so changing
+    this one header field preserves the original texture while making it standards
+    compliant enough for Godot's DDS importer.
+    """
+    if not is_valid_dds_payload(data):
+        return data, False
+
+    flags = struct.unpack_from("<I", data, 8)[0]
+    if not (flags & DDSD_LINEARSIZE):
+        return data, False
+
+    height, width, declared_size = struct.unpack_from("<III", data, 12)
+    fourcc = data[84:88]
+    block_bytes = _DDS_BLOCK_BYTES.get(fourcc)
+    if block_bytes is None:
+        return data, False
+
+    expected_size = max(1, (width + 3) // 4) * max(1, (height + 3) // 4) * block_bytes
+    if declared_size == expected_size:
+        return data, False
+
+    patched = bytearray(data)
+    struct.pack_into("<I", patched, 20, expected_size)
+    return bytes(patched), True
+
+
+def normalize_dds_file_for_godot(path: Path) -> bool:
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return False
+    normalized, changed = normalize_dds_payload_for_godot(data)
+    if changed:
+        path.write_bytes(normalized)
+    return changed
+
+
+def is_valid_wav_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(12)
+        return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
+    except OSError:
+        return False
+
+
 def _known_plain_magic(data: bytes) -> bool:
-    return data.startswith((b"DDS ", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
+    return data.startswith((b"DDS ", b"RIFF", b"FORM", b"MIF", b"LATA", b"LAT ", b"SOTA"))
 
 
 def decode_tre_entry(tre_path: Path, entry: dict[str, Any]) -> bytes:
@@ -707,6 +852,59 @@ def main() -> int:
     output_root = project_root / "assets" / "local-swg"
     texture_root = output_root / "texture"
     texture_root.mkdir(parents=True, exist_ok=True)
+    # Keep original DDS files for the browser pipeline, but do not make Godot
+    # try to import them. Some SWG-era DDS variants are accepted by the old
+    # client/Three.js but rejected by current Godot DDS validation.
+    (texture_root / ".gdignore").write_text("", encoding="utf-8")
+    godot_texture_root = output_root / "godot" / "texture"
+    godot_texture_root.mkdir(parents=True, exist_ok=True)
+
+    path_index: dict[str, AssetEntry] = {}
+    for entry in inventory:
+        key = entry.virtual_path.lower()
+        previous = path_index.get(key)
+        if previous is None or entry.archive_rank > previous.archive_rank:
+            path_index[key] = entry
+
+    audio_root = output_root / "audio"
+    audio_root.mkdir(parents=True, exist_ok=True)
+    audio_assets: dict[str, dict[str, Any]] = {}
+    audio_failures: dict[str, str] = {}
+    for role, candidates in AUDIO_TARGETS.items():
+        selected_audio: AssetEntry | None = None
+        for candidate in candidates:
+            selected_audio = path_index.get(candidate.lower())
+            if selected_audio is not None:
+                break
+        if selected_audio is None:
+            audio_failures[role] = "no known SWG WAV candidate found"
+            print(f"AUDIO  miss {role}: {audio_failures[role]}")
+            continue
+
+        destination = audio_root / f"{role}.wav"
+        loose_path = copy_loose(source, selected_audio.virtual_path, destination)
+        source_kind = "loose"
+        if loose_path is None:
+            source_kind = "TRE"
+            ok, error = extract_from_tre(selected_audio.archive, selected_audio.metadata, destination)
+            if not ok:
+                audio_failures[role] = error or "TRE extraction failed"
+                destination.unlink(missing_ok=True)
+                print(f"AUDIO  miss {role}: {audio_failures[role]}")
+                continue
+        if not is_valid_wav_file(destination):
+            audio_failures[role] = "decoded sample was not a standard RIFF/WAVE payload"
+            destination.unlink(missing_ok=True)
+            print(f"AUDIO  miss {role}: {audio_failures[role]}")
+            continue
+
+        url = f"./assets/local-swg/audio/{destination.name}"
+        descriptor = build_manifest_asset(selected_audio, url)
+        descriptor["sourceKind"] = source_kind
+        if loose_path is not None:
+            descriptor["sourcePath"] = str(loose_path.relative_to(source).as_posix())
+        audio_assets[role] = descriptor
+        print(f"AUDIO  {role:<14} {selected_audio.archive.name} :: {selected_audio.virtual_path} [{source_kind}]")
 
     manifest_assets: dict[str, dict[str, Any]] = {}
     selections: dict[str, dict[str, Any]] = {}
@@ -741,6 +939,9 @@ def main() -> int:
             else:
                 ok = True
 
+            if ok:
+                normalize_dds_file_for_godot(destination)
+
             if ok and not is_valid_dds_file(destination):
                 error = "decoded candidate did not have a valid DDS header"
                 try:
@@ -753,7 +954,17 @@ def main() -> int:
                 continue
 
             url = f"./assets/local-swg/texture/{destination.name}"
+            godot_url = ""
+            try:
+                godot_destination = godot_texture_root / f"{role}.png"
+                dds_to_png_file(destination, godot_destination)
+                godot_url = f"./assets/local-swg/godot/texture/{godot_destination.name}"
+            except (OSError, DDSDecodeError, ValueError) as exc:
+                print(f"WARN   {role}: could not build Godot PNG fallback: {exc}")
+
             manifest_assets[role] = build_manifest_asset(entry, url)
+            if godot_url:
+                manifest_assets[role]["godotUrl"] = godot_url
             manifest_assets[role]["sourceKind"] = source_kind
             if loose_path is not None:
                 manifest_assets[role]["sourcePath"] = str(loose_path.relative_to(source).as_posix())
@@ -826,6 +1037,114 @@ def main() -> int:
     except Exception as exc:
         print(f"MESH   proof unavailable: {exc}")
 
+    weapons: dict[str, dict[str, Any]] = {}
+    weapon_failures: dict[str, str] = {}
+    try:
+        from convert_swg_mesh import (
+            convert_from_inventory as convert_weapon_from_inventory,
+            extract_shader_texture_paths,
+            parse_static_mesh,
+        )
+
+        weapon_root = output_root / "weapon"
+        for role in WEAPON_MESH_RULES:
+            weapon_entry = select_weapon_mesh(inventory, role)
+            if weapon_entry is None:
+                weapon_failures[role] = "no suitable SWG weapon .msh candidate found"
+                print(f"WEAPON miss {role}: {weapon_failures[role]}")
+                continue
+
+            weapon_gltf = weapon_root / role / f"{role}.gltf"
+            weapon_bin = weapon_gltf.with_suffix(".bin")
+            converted_entry, weapon_summary = convert_weapon_from_inventory(
+                inventory,
+                weapon_gltf,
+                weapon_bin,
+                preferred_virtual_path=weapon_entry.virtual_path,
+            )
+
+            source_submeshes = parse_static_mesh(
+                decode_tre_entry(converted_entry.archive, converted_entry.metadata)
+            )
+            shader_bindings: dict[str, list[str]] = {}
+            shader_texture_paths: set[str] = set()
+            for submesh in source_submeshes:
+                shader_entry = path_index.get(submesh.shader.lower())
+                if shader_entry is None:
+                    shader_bindings[submesh.shader] = []
+                    continue
+                shader_paths = extract_shader_texture_paths(
+                    decode_tre_entry(shader_entry.archive, shader_entry.metadata)
+                )
+                shader_bindings[submesh.shader] = shader_paths
+                shader_texture_paths.update(shader_paths)
+
+            weapon_texture_root = weapon_root / role / "texture"
+            weapon_texture_root.mkdir(parents=True, exist_ok=True)
+            (weapon_texture_root / ".gdignore").write_text("", encoding="utf-8")
+            weapon_godot_texture_root = output_root / "godot" / "weapon" / role
+            weapon_godot_texture_root.mkdir(parents=True, exist_ok=True)
+            weapon_textures: dict[str, dict[str, Any]] = {}
+            failed_texture_paths: dict[str, str] = {}
+            for shader_texture_path in sorted(shader_texture_paths):
+                texture_entry = path_index.get(shader_texture_path.lower())
+                if texture_entry is None:
+                    failed_texture_paths[shader_texture_path] = "shader DDS path not present in inventory"
+                    continue
+                destination = weapon_texture_root / Path(shader_texture_path).name
+                loose_path = copy_loose(source, texture_entry.virtual_path, destination)
+                source_kind = "loose"
+                if loose_path is None:
+                    source_kind = "TRE"
+                    ok, error = extract_from_tre(texture_entry.archive, texture_entry.metadata, destination)
+                    if not ok:
+                        failed_texture_paths[shader_texture_path] = error or "TRE extraction failed"
+                        destination.unlink(missing_ok=True)
+                        continue
+                normalize_dds_file_for_godot(destination)
+                if not is_valid_dds_file(destination):
+                    failed_texture_paths[shader_texture_path] = "decoded shader reference did not have a valid DDS header"
+                    destination.unlink(missing_ok=True)
+                    continue
+
+                godot_url = ""
+                try:
+                    godot_destination = weapon_godot_texture_root / f"{Path(shader_texture_path).stem}.png"
+                    dds_to_png_file(destination, godot_destination)
+                    godot_url = f"./assets/local-swg/godot/weapon/{role}/{godot_destination.name}"
+                except (OSError, DDSDecodeError, ValueError) as exc:
+                    failed_texture_paths[shader_texture_path] = f"Godot PNG conversion failed: {exc}"
+
+                descriptor = build_manifest_asset(
+                    texture_entry,
+                    f"./assets/local-swg/weapon/{role}/texture/{destination.name}",
+                )
+                if godot_url:
+                    descriptor["godotUrl"] = godot_url
+                descriptor["sourceKind"] = source_kind
+                weapon_textures[shader_texture_path] = descriptor
+
+            weapons[role] = {
+                "url": f"./assets/local-swg/weapon/{role}/{weapon_gltf.name}",
+                "bin": f"./assets/local-swg/weapon/{role}/{weapon_bin.name}",
+                "archive": converted_entry.archive.name,
+                "archivePath": str(converted_entry.archive),
+                "archiveRank": converted_entry.archive_rank,
+                "virtualPath": converted_entry.virtual_path,
+                "shaderBindings": shader_bindings,
+                "textures": weapon_textures,
+                "failedTextures": failed_texture_paths,
+                **weapon_summary,
+            }
+            print(
+                f"WEAPON {role:<14} {converted_entry.archive.name} :: {converted_entry.virtual_path} "
+                f"({weapon_summary['vertices']:,} vertices, {len(weapon_textures)} shader DDS textures)"
+            )
+    except Exception as exc:
+        for role in WEAPON_MESH_RULES:
+            weapon_failures.setdefault(role, str(exc))
+        print(f"WEAPON conversion unavailable: {exc}")
+
     characters: dict[str, dict[str, Any]] = {}
     character_failures: dict[str, str] = {}
     try:
@@ -841,16 +1160,14 @@ def main() -> int:
             parse_static_mesh,
         )
 
-        path_index: dict[str, AssetEntry] = {}
-        for entry in inventory:
-            key = entry.virtual_path.lower()
-            previous = path_index.get(key)
-            if previous is None or entry.archive_rank > previous.archive_rank:
-                path_index[key] = entry
-
         for role in CHARACTER_MESH_RULES:
             static_entry = select_character_mesh(inventory, role)
-            skeletal_entry = choose_character_skeletal_mesh(inventory) if role == "stormtrooper" else None
+            if role == "stormtrooper":
+                skeletal_entry = choose_character_skeletal_mesh(inventory)
+            elif role == "firstPersonHands":
+                skeletal_entry = path_index.get("appearance/mesh/hum_m_hands_l0.mgn")
+            else:
+                skeletal_entry = None
             if static_entry is None and skeletal_entry is None:
                 character_failures[role] = "no ranked character mesh candidate"
                 print(f"CHARACTER miss {role}: no ranked mesh candidate")
@@ -944,6 +1261,10 @@ def main() -> int:
                 shader_texture_paths.update(shader_paths)
 
             character_texture_root = character_root / "texture"
+            character_texture_root.mkdir(parents=True, exist_ok=True)
+            (character_texture_root / ".gdignore").write_text("", encoding="utf-8")
+            character_godot_texture_root = output_root / "godot" / "character" / role
+            character_godot_texture_root.mkdir(parents=True, exist_ok=True)
             character_textures: dict[str, dict[str, Any]] = {}
             failed_texture_paths: dict[str, str] = {}
             for shader_texture_path in sorted(shader_texture_paths):
@@ -961,12 +1282,23 @@ def main() -> int:
                         failed_texture_paths[shader_texture_path] = error or "TRE extraction failed"
                         destination.unlink(missing_ok=True)
                         continue
+                normalize_dds_file_for_godot(destination)
                 if not is_valid_dds_file(destination):
                     failed_texture_paths[shader_texture_path] = "decoded shader reference did not have a valid DDS header"
                     destination.unlink(missing_ok=True)
                     continue
                 url = f"./assets/local-swg/character/{role}/texture/{destination.name}"
+                godot_url = ""
+                try:
+                    godot_destination = character_godot_texture_root / f"{Path(shader_texture_path).stem}.png"
+                    dds_to_png_file(destination, godot_destination)
+                    godot_url = f"./assets/local-swg/godot/character/{role}/{godot_destination.name}"
+                except (OSError, DDSDecodeError, ValueError) as exc:
+                    failed_texture_paths[shader_texture_path] = f"Godot PNG conversion failed: {exc}"
+
                 descriptor = build_manifest_asset(texture_entry, url)
+                if godot_url:
+                    descriptor["godotUrl"] = godot_url
                 descriptor["sourceKind"] = source_kind
                 if loose_path is not None:
                     descriptor["sourcePath"] = str(loose_path.relative_to(source).as_posix())
@@ -974,6 +1306,22 @@ def main() -> int:
                 print(
                     f"CHARACTER texture {role:<11} {texture_entry.archive.name} :: "
                     f"{texture_entry.virtual_path} [{source_kind}]"
+                )
+
+            raw_min_y = min(
+                (position[1] for submesh in source_submeshes for position in submesh.positions),
+                default=0.0,
+            )
+            raw_max_y = max(
+                (position[1] for submesh in source_submeshes for position in submesh.positions),
+                default=1.0,
+            )
+            raw_height = max(raw_max_y - raw_min_y, 0.001)
+            if role == "stormtrooper":
+                recommended_scale = 1.82 / raw_height
+            else:
+                recommended_scale = float(
+                    characters.get("stormtrooper", {}).get("recommendedScale", 1.0)
                 )
 
             characters[role] = {
@@ -989,7 +1337,10 @@ def main() -> int:
                 "sourceSubmeshes": len(source_submeshes),
                 "hiddenSubmeshes": hidden_submeshes,
                 "groundOffset": ground_offset,
+                "rawHeight": raw_height,
+                "recommendedScale": recommended_scale,
                 "rigged": rigged,
+                "pipelineRevision": 4,
                 **character_summary,
             }
             print(
@@ -1008,10 +1359,14 @@ def main() -> int:
         "decoder": {"tre": "Twofish-128 ECB + zlib", "key": "embedded Restoration client key"},
         "inventory": stats,
         "assets": manifest_assets,
+        "audio": audio_assets,
+        "audioFailures": audio_failures,
         "selections": selections,
         "failedRoles": failures,
         "meshCandidates": mesh_candidates,
         "meshProof": mesh_proof,
+        "weapons": weapons,
+        "weaponFailures": weapon_failures,
         "characterCandidates": character_candidates_all[:500],
         "characters": characters,
         "characterFailures": character_failures,
@@ -1028,6 +1383,7 @@ def main() -> int:
 
     print()
     print(f"Imported {imported}/{len(ROLE_RULES)} curated SWG material roles.")
+    print("DDS compatibility: original DDS retained for browser use; Godot-safe PNG fallbacks generated when supported.")
     if failures:
         print("Roles without a usable candidate:")
         for role, reason in failures.items():

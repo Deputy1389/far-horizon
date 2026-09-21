@@ -1,0 +1,62 @@
+name: Foundation validation
+
+on:
+  push:
+    branches:
+      - chatgpt/foundation-v0.1
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  godot-foundation:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.7.2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import Godot project
+        run: |
+          godot --headless --rendering-method gl_compatibility --path . --editor --quit-after 2
+
+      - name: Parse every foundation script
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r script; do
+            echo "Checking $script"
+            godot --headless --rendering-method gl_compatibility --path . --check-only --script "res://$script"
+          done < <(find game/scripts -type f -name '*.gd' | sort)
+
+      - name: Foundation architecture contracts
+        run: |
+          godot --headless --rendering-method gl_compatibility --path . --script res://game/tests/foundation_contracts.gd
+
+      - name: Boot the playable foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$(mktemp)"
+          godot --headless --rendering-method gl_compatibility --path . --quit-after 240 2>&1 | tee "$log"
+          grep -q "FOUNDATION_READY" "$log"
+          if grep -q "SCRIPT ERROR:" "$log"; then
+            echo "Runtime script error detected."
+            exit 1
+          fi
+
+  existing-pipeline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python unit tests
+        run: python3 -m unittest discover tools -p "test_*.py" -q
+
+      - name: Node motion tests
+        run: node tools/test_motion.mjs
+
+      - name: Node asset diagnostics tests
+        run: node tools/test_asset_diagnostics.mjs

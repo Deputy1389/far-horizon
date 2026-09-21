@@ -87,6 +87,14 @@ class SkeletalSubmesh:
 
 
 @dataclass(frozen=True)
+class SkeletalHardpoint:
+    name: str
+    parent_joint_name: str
+    position: tuple[float, float, float]
+    rotation: Quaternion
+
+
+@dataclass(frozen=True)
 class SkeletalMeshData:
     skeleton_filename: str
     bone_names: list[str]
@@ -94,6 +102,7 @@ class SkeletalMeshData:
     source_normals: list[tuple[float, float, float]]
     vertex_weights: list[list[BoneWeight]]
     submeshes: list[SkeletalSubmesh]
+    hardpoints: list[SkeletalHardpoint] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -344,7 +353,40 @@ def parse_skeletal_mesh(blob: bytes) -> SkeletalMeshData:
         )
     if not submeshes:
         raise ValueError("SKMG contains no PSDT submeshes")
-    return SkeletalMeshData(skeleton_filename, bone_names, positions, normals, vertex_weights, submeshes)
+
+    hardpoints: list[SkeletalHardpoint] = []
+    hpts = _first_form(root, b"HPTS")
+    if hpts is not None:
+        for hardpoint_form in hpts.children:
+            if hardpoint_form.tag != FORM:
+                continue
+            name_chunk = _first_chunk(hardpoint_form, b"NAME")
+            data_chunk = _first_chunk(hardpoint_form, b"DATA")
+            if name_chunk is None or data_chunk is None:
+                continue
+            names = _read_c_strings(name_chunk.data, 2, "mesh hardpoint NAME")
+            if len(data_chunk.data) < 28:
+                continue
+            x, y, z, w, qx, qy, qz = struct.unpack_from("<7f", data_chunk.data)
+            _finite((x, y, z, qx, qy, qz, w), "mesh hardpoint")
+            hardpoints.append(
+                SkeletalHardpoint(
+                    names[0],
+                    names[1],
+                    (x, y, z),
+                    Quaternion(qx, qy, qz, w),
+                )
+            )
+
+    return SkeletalMeshData(
+        skeleton_filename,
+        bone_names,
+        positions,
+        normals,
+        vertex_weights,
+        submeshes,
+        hardpoints,
+    )
 
 
 # These compact formulas reproduce the observed SWG table ranges while keeping
@@ -955,6 +997,42 @@ def write_skinned_gltf(
         else:
             nodes[0].setdefault("children", []).append(bone_node_indices[bone_index])
 
+    hardpoint_nodes: list[dict[str, object]] = []
+    for hardpoint in mesh.hardpoints:
+        parent_index = skeleton_by_name.get(hardpoint.parent_joint_name.casefold())
+        if parent_index is None:
+            continue
+        node_index = len(nodes)
+        node = {
+            "name": hardpoint.name,
+            "translation": list(hardpoint.position),
+            "rotation": [
+                hardpoint.rotation.x,
+                hardpoint.rotation.y,
+                hardpoint.rotation.z,
+                hardpoint.rotation.w,
+            ],
+            "extras": {
+                "swgHardpoint": True,
+                "parentJoint": hardpoint.parent_joint_name,
+            },
+        }
+        nodes.append(node)
+        nodes[bone_node_indices[parent_index]].setdefault("children", []).append(node_index)
+        hardpoint_nodes.append(
+            {
+                "name": hardpoint.name,
+                "parentJoint": hardpoint.parent_joint_name,
+                "translation": list(hardpoint.position),
+                "rotation": [
+                    hardpoint.rotation.x,
+                    hardpoint.rotation.y,
+                    hardpoint.rotation.z,
+                    hardpoint.rotation.w,
+                ],
+            }
+        )
+
     for mesh_index, mesh_document in enumerate(meshes):
         node_index = len(nodes)
         nodes.append({"name": mesh_document["name"], "mesh": mesh_index, "skin": 0})
@@ -1049,6 +1127,7 @@ def write_skinned_gltf(
             "conversion": "SWG FORM SKMG + SLOD + CKAT -> glTF 2.0 skin",
             "skeleton": "appearance/skeleton/all_b.skt",
             "animationClips": [clip.name for clip in animations],
+            "hardpoints": hardpoint_nodes,
         },
     }
     output_gltf.parent.mkdir(parents=True, exist_ok=True)
@@ -1062,6 +1141,9 @@ def write_skinned_gltf(
         "bones": len(skeleton.bones),
         "skins": 1,
         "animations": len(animation_documents),
+        "boneNames": [bone.name for bone in skeleton.bones],
+        "hardpoints": hardpoint_nodes,
+        "hardpointNames": [str(item["name"]) for item in hardpoint_nodes],
         "animationSpeeds": {
             clip.name: round(float(clip.average_translation_speed), 6)
             for clip in animations
@@ -1095,28 +1177,71 @@ def choose_character_skeletal_mesh(entries: Iterable[AssetEntry]) -> AssetEntry 
     )
 
 
-def character_animation_specs() -> tuple[tuple[str, tuple[str, ...]], ...]:
+def character_animation_specs() -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
+    """Curated humanoid rifle clips for directional combat locomotion.
+
+    SWG already contains separate forward/back/strafe rifle clips. Import them
+    explicitly instead of rotating a forward-running animation around at
+    runtime.
+    """
     return (
         (
             "idle",
             (
+                "appearance/animation/all_b_cbt_rifle_standing_aimed_idle_front_left.ans",
                 "appearance/animation/all_b_cbt_rifle_standing_ready_idle_front_left.ans",
-                "appearance/animation/all_b_ad_stormtrooper1.ans",
             ),
+            ("all_b", "rifle", "standing", "idle"),
         ),
         (
-            "walk",
+            "walk_forward",
             (
+                "appearance/animation/all_b_cbt_rifle_walk_aimed.ans",
                 "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
-                "appearance/animation/all_b_loc_walk_male.ans",
             ),
+            ("all_b", "rifle", "walk", "aimed"),
         ),
         (
-            "run",
-            ("appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",),
+            "walk_back",
+            (
+                "appearance/animation/all_b_cbt_rifle_a_walk_backwards_aimed.ans",
+                "appearance/animation/all_b_cbt_rifle_a_walk_backwards_ready.ans",
+            ),
+            ("all_b", "rifle", "walk", "backwards"),
+        ),
+        (
+            "strafe_left",
+            (
+                "appearance/animation/all_b_cbt_rifle_a_walk_sidestepl_aimed.ans",
+                "appearance/animation/all_b_cbt_rifle_walk_aimed_left.ans",
+            ),
+            ("all_b", "rifle", "sidestepl"),
+        ),
+        (
+            "strafe_right",
+            (
+                "appearance/animation/all_b_cbt_rifle_a_walk_sidestepr_aimed.ans",
+                "appearance/animation/all_b_cbt_rifle_walk_aimed_right.ans",
+            ),
+            ("all_b", "rifle", "sidestepr"),
+        ),
+        (
+            "run_forward",
+            (
+                "appearance/animation/all_b_cbt_rifle_run_ready.ans",
+                "appearance/animation/all_b_loc_run_rifle_storm_trooper.ans",
+            ),
+            ("all_b", "rifle", "run", "ready"),
+        ),
+        (
+            "fire",
+            (
+                "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front.ans",
+                "appearance/animation/all_b_cbt_rifle_a_standing_aimed_fire_single.ans",
+            ),
+            ("all_b", "rifle", "standing", "fire", "front"),
         ),
     )
-
 
 def convert_from_inventory(
     entries: Iterable[AssetEntry],
@@ -1148,8 +1273,8 @@ def convert_from_inventory(
     animations: list[AnimationClipData] = []
     selected_animation_paths: list[str] = []
     animation_sources: list[dict[str, str | int]] = []
-    for animation_name, preferred_paths in character_animation_specs():
-        animation_entry = _ranked_entry(entries, preferred_paths, ".ans", ("all_b",))
+    for animation_name, preferred_paths, fallback_terms in character_animation_specs():
+        animation_entry = _ranked_entry(entries, preferred_paths, ".ans", fallback_terms)
         if animation_entry is None:
             print(f"CHARACTER animation miss {animation_name}: no ranked .ans candidate")
             continue

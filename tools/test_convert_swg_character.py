@@ -64,6 +64,26 @@ def _one_bone_mesh() -> bytes:
             _leaf(b"TWHD", struct.pack("<3I", 1, 1, 1)),
             _leaf(b"TWDT", weights),
             psdt,
+            _form(
+                b"HPTS",
+                _form(
+                    b"HPNT",
+                    _leaf(b"NAME", b"hp_weapon_right\x00root\x00"),
+                    _leaf(
+                        b"DATA",
+                        struct.pack(
+                            "<7f",
+                            0.12,
+                            0.34,
+                            -0.08,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                        ),
+                    ),
+                ),
+            ),
         ),
     )
 
@@ -79,6 +99,9 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
         self.assertEqual(mesh.bone_names, ["root"])
         self.assertEqual(mesh.vertex_weights[0][0].bone_index, 0)
         self.assertEqual(mesh.submeshes[0].source_vertex_indices, [0, 1, 2])
+        self.assertEqual(len(mesh.hardpoints), 1)
+        self.assertEqual(mesh.hardpoints[0].name, "hp_weapon_right")
+        self.assertEqual(mesh.hardpoints[0].parent_joint_name, "root")
 
     def test_writes_a_glb_compatible_skin_and_animation(self) -> None:
         skeleton = parse_skeleton(_one_bone_skeleton())
@@ -114,6 +137,9 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
         self.assertIn("WEIGHTS_0", attributes)
         self.assertEqual(document["animations"][0]["name"], "walk")
         self.assertEqual(summary["animationSpeeds"], {"walk": 1.5})
+        self.assertEqual(summary["hardpointNames"], ["hp_weapon_right"])
+        hardpoint_node = next(node for node in document["nodes"] if node["name"] == "hp_weapon_right")
+        self.assertEqual(hardpoint_node["extras"]["parentJoint"], "root")
 
     def test_prefers_the_highest_ranked_exact_skeletal_mesh_path(self) -> None:
         older = AssetEntry(
@@ -129,12 +155,33 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
 
         self.assertEqual(choose_character_skeletal_mesh([older, newer]), newer)
 
-    def test_prefers_the_rifle_ready_walk_clip_for_the_two_hand_weapon_pose(self) -> None:
-        specs = dict(character_animation_specs())
+    def test_prefers_directional_rifle_character_clips(self) -> None:
+        specs = {
+            name: (preferred_paths, fallback_terms)
+            for name, preferred_paths, fallback_terms in character_animation_specs()
+        }
         self.assertEqual(
-            specs["walk"][0],
-            "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
+            specs["walk_forward"][0][0],
+            "appearance/animation/all_b_cbt_rifle_walk_aimed.ans",
         )
+        self.assertEqual(
+            specs["walk_back"][0][0],
+            "appearance/animation/all_b_cbt_rifle_a_walk_backwards_aimed.ans",
+        )
+        self.assertEqual(
+            specs["strafe_left"][0][0],
+            "appearance/animation/all_b_cbt_rifle_a_walk_sidestepl_aimed.ans",
+        )
+        self.assertEqual(
+            specs["strafe_right"][0][0],
+            "appearance/animation/all_b_cbt_rifle_a_walk_sidestepr_aimed.ans",
+        )
+        self.assertEqual(
+            specs["fire"][0][0],
+            "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front.ans",
+        )
+        self.assertNotIn("death", specs)
+        self.assertIn("rifle", specs["fire"][1])
 
 
 if __name__ == "__main__":
