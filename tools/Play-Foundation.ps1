@@ -65,7 +65,10 @@ if (-not $needsAssetRefresh) {
             -not $manifestData.audio.blasterRifle -or
             -not $manifestData.audio.footstepSand1 -or
             -not $manifestData.weapons -or
-            -not $manifestData.weapons.blasterRifle
+            -not $manifestData.weapons.blasterRifle -or
+            -not $manifestData.characters -or
+            -not $manifestData.characters.stormtrooper -or
+            [int]$manifestData.characters.stormtrooper.animations -lt 4
         )
     } catch {
         $needsAssetRefresh = $true
