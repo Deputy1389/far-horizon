@@ -1,7 +1,7 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "[2026.09.21-06.41.54:092][592]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
-    "sha":  "72f47a2683784a70196d39520dd50a56e29092e3",
+    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFoundationArena.cpp(147,21): error C2248: \u0027UNavigationSystemV1::RebuildAll\u0027: cannot access protected member declared in class \u0027UNavigationSystemV1\u0027\r\n[2026.09.21-06.43.20:858][594]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
+    "sha":  "185f1d4fa22ad6e93724c6634092c88c3b57282e",
     "failedStage":  null,
     "engineVersion":  "5.8",
     "epicTemplate":  {
@@ -193,27 +193,27 @@
                                         ],
                          "available":  true
                      },
-    "shortSha":  "72f47a268378",
+    "shortSha":  "185f1d4fa22a",
     "status":  "PASS",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  6.6,
+                      "durationSeconds":  15.4,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "automation",
-                      "durationSeconds":  27,
+                      "durationSeconds":  25.5,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "boot",
-                      "durationSeconds":  19.2,
+                      "durationSeconds":  17.7,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T06:42:13.8114244Z"
+    "testedAtUtc":  "2026-09-21T06:43:39.0622595Z"
 }
