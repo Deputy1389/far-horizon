@@ -5,6 +5,7 @@ param(
     [string]$EngineRoot = "",
     [string]$ResultsBranch = "automation/unreal-local-results",
     [string]$RepoRootOverride = "",
+    [string]$TargetSha = "",
     [switch]$RunOnce,
     [switch]$LaunchOnPass,
     [switch]$NoPublish
@@ -550,7 +551,11 @@ $lastSha = ""
 
 while ($true) {
     try {
-        $sha = Get-FHRemoteSha
+        $sha = if (-not [string]::IsNullOrWhiteSpace($TargetSha)) {
+            $TargetSha
+        } else {
+            Get-FHRemoteSha
+        }
 
         if ($sha -ne $lastSha) {
             # Ensure the newly advertised remote commit actually exists in the
