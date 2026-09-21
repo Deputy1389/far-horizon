@@ -4,6 +4,7 @@ extends Node3D
 signal weapon_changed(name: String)
 signal fired
 signal hit_confirmed
+signal heat_changed(value: float, overheated: bool)
 
 var camera: Camera3D
 var owner_body: CharacterBody3D
@@ -13,6 +14,9 @@ var cooldown := 0.0
 var aiming := false
 var enabled := true
 var rng := RandomNumberGenerator.new()
+var heat := 0.0
+var overheated := false
+var motion_time := 0.0
 
 var viewmodel := Node3D.new()
 var muzzle := Marker3D.new()
@@ -38,12 +42,16 @@ func configure(view_camera: Camera3D, body: CharacterBody3D) -> void:
 	_build_muzzle_flash()
 	_rebuild_viewmodel()
 	camera.fov = base_fov
+	heat_changed.emit(heat, overheated)
 
 func current_weapon() -> WeaponDefinition:
 	return weapons[current_index]
 
 func is_aiming() -> bool:
 	return aiming
+
+func is_overheated() -> bool:
+	return overheated
 
 func set_enabled(value: bool) -> void:
 	enabled = value
@@ -78,6 +86,16 @@ func _process(delta: float) -> void:
 		return
 	cooldown = maxf(0.0, cooldown - delta)
 	muzzle_flash_time = maxf(0.0, muzzle_flash_time - delta)
+	var weapon := current_weapon()
+	var venting := enabled and Input.is_action_pressed("vent")
+	var cooling_multiplier := 3.2 if venting else (1.7 if overheated else 1.0)
+	if heat > 0.0 and (not Input.is_action_pressed("fire") or overheated or venting):
+		var previous_heat := heat
+		heat = maxf(0.0, heat - weapon.cooling_rate * cooling_multiplier * delta)
+		if overheated and heat <= 0.18:
+			overheated = false
+		if absf(previous_heat - heat) > 0.001:
+			heat_changed.emit(heat, overheated)
 	if muzzle_flash_time <= 0.0:
 		muzzle_flash_mesh.visible = false
 		muzzle_flash_light.visible = false
@@ -89,7 +107,6 @@ func _process(delta: float) -> void:
 			_select_weapon(1)
 
 	aiming = enabled and Input.is_action_pressed("aim")
-	var weapon := current_weapon()
 	var planar_speed := Vector2(owner_body.velocity.x, owner_body.velocity.z).length() if owner_body != null else 0.0
 	var sprint_presented := (
 		enabled
@@ -102,7 +119,20 @@ func _process(delta: float) -> void:
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 15.0))
 
 	viewmodel_kick = lerpf(viewmodel_kick, 0.0, 1.0 - exp(-delta * 18.0))
+	motion_time += delta * (2.1 + planar_speed * 0.85)
 	var target_offset := weapon.ads_offset if aiming else weapon.viewmodel_offset
+	var sway_amount := 0.003 if aiming else 0.008
+	target_offset += Vector3(
+		sin(motion_time) * sway_amount,
+		cos(motion_time * 0.55) * sway_amount * 0.7,
+		0.0
+	)
+	if planar_speed > 0.35 and not aiming:
+		target_offset += Vector3(
+			sin(motion_time * 2.2) * 0.008,
+			absf(cos(motion_time * 2.2)) * 0.01,
+			0.0
+		)
 	if sprint_presented:
 		target_offset += Vector3(0.0, -0.09, 0.09)
 	target_offset += Vector3(0.0, 0.0, viewmodel_kick)
@@ -112,7 +142,7 @@ func _process(delta: float) -> void:
 	viewmodel.rotation.z = lerpf(viewmodel.rotation.z, target_roll, 1.0 - exp(-delta * 12.0))
 	viewmodel.rotation.x = lerpf(viewmodel.rotation.x, target_pitch, 1.0 - exp(-delta * 12.0))
 
-	if enabled and Input.is_action_pressed("fire") and cooldown <= 0.0:
+	if enabled and Input.is_action_pressed("fire") and cooldown <= 0.0 and not overheated and not venting:
 		_fire()
 
 func _select_weapon(index: int) -> void:
@@ -162,12 +192,18 @@ func _fire() -> void:
 
 	var direction := -camera.global_basis.z
 	var spread_degrees := weapon.ads_spread_degrees if aiming else weapon.hip_spread_degrees
+	spread_degrees += heat * (0.18 if aiming else 0.42)
 	direction = _apply_spread(direction, deg_to_rad(spread_degrees))
 
 	var bolt := BlasterBolt.new()
 	get_tree().current_scene.add_child(bolt)
 	bolt.damaged_target.connect(_on_bolt_damaged_target)
 	bolt.configure(muzzle.global_position, direction, weapon.projectile_speed, weapon.damage, owner_body)
+
+	heat = minf(1.0, heat + weapon.heat_per_shot)
+	if heat >= 0.999:
+		overheated = true
+	heat_changed.emit(heat, overheated)
 
 	viewmodel_kick = minf(viewmodel_kick + (0.022 if aiming else 0.038), 0.08)
 	muzzle_flash_time = 0.045
