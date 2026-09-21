@@ -206,7 +206,18 @@ function ConvertTo-FHSafeText {
 
     foreach ($pair in $replacements) {
         if (-not [string]::IsNullOrWhiteSpace([string]$pair[0])) {
-            $safe = $safe -replace [Regex]::Escape([string]$pair[0]), [string]$pair[1]
+            $source = [string]$pair[0]
+            $replacement = [string]$pair[1]
+
+            foreach ($variant in @(
+                $source,
+                ($source -replace "\\", "/"),
+                ($source -replace "/", "\\")
+            )) {
+                if (-not [string]::IsNullOrWhiteSpace($variant)) {
+                    $safe = $safe -replace [Regex]::Escape($variant), $replacement
+                }
+            }
         }
     }
     return $safe
@@ -440,7 +451,13 @@ function Invoke-FHValidation {
         $automation = Invoke-FHLoggedProcess @automationParams
         $steps.Add($automation)
 
-        $automationFailure = Test-FHLogFailure -Paths @($automation.StdOut, $automation.StdErr) -Patterns @("Automation Test Failed", "LogAutomation.*Error", "Result=Fail")
+        $automationFailure = Test-FHLogFailure `
+            -Paths @($automation.StdOut, $automation.StdErr) `
+            -Patterns @(
+                "Test Completed\. Result=(Fail|Failed|Failure)",
+                "\*\*\*\* TEST COMPLETE\. EXIT CODE: [1-9][0-9]* \*\*\*\*",
+                "Automation Test Failed"
+            )
         $automationPass = ($automation.ExitCode -eq 0 -and -not $automationFailure)
 
         if ($automationPass) {
