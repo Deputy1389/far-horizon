@@ -98,6 +98,36 @@ function Ensure-FHTestWorktree {
             Write-Warning "Could not link local SWG assets into the test worktree: $($_.Exception.Message)"
         }
     }
+
+    # Local-only Unreal content is intentionally ignored by Git. Mount the
+    # migrated Epic FPS foundation and locally imported SWG content into the
+    # isolated validation worktree when they exist on the user's machine.
+    $localContentFolders = @(
+        "FirstPerson",
+        "Variant_Shooter",
+        "Characters",
+        "Weapons",
+        "LevelPrototyping",
+        "FarHorizon\LocalSWG"
+    )
+
+    $repoContent = Join-Path $RepoRoot "Content"
+    $testContent = Join-Path $Path "Content"
+    New-Item -ItemType Directory -Force -Path $testContent | Out-Null
+
+    foreach ($relativeContent in $localContentFolders) {
+        $sourceContent = Join-Path $repoContent $relativeContent
+        $destinationContent = Join-Path $testContent $relativeContent
+
+        if ((Test-Path $sourceContent) -and -not (Test-Path $destinationContent)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationContent) | Out-Null
+            try {
+                New-Item -ItemType Junction -Path $destinationContent -Target $sourceContent | Out-Null
+            } catch {
+                Write-Warning "Could not link local Unreal content '$relativeContent': $($_.Exception.Message)"
+            }
+        }
+    }
 }
 
 function Invoke-FHLoggedProcess {
