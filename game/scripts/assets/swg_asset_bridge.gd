@@ -17,6 +17,25 @@ static func stormtrooper_descriptor() -> Dictionary:
 	var descriptor = characters.get("stormtrooper", {})
 	return descriptor if descriptor is Dictionary else {}
 
+static func stormtrooper_animation_speed(animation_name: String) -> float:
+	var descriptor := stormtrooper_descriptor()
+	var speeds_value: Variant = descriptor.get("animationSpeeds", {})
+	if not speeds_value is Dictionary:
+		return 0.0
+	var speeds: Dictionary = speeds_value
+	return float(speeds.get(animation_name, 0.0))
+
+
+static func stormtrooper_bone_names() -> Array[String]:
+	var descriptor := stormtrooper_descriptor()
+	var value: Variant = descriptor.get("boneNames", [])
+	var result: Array[String] = []
+	if value is Array:
+		for item in value:
+			result.append(String(item))
+	return result
+
+
 static func local_url_to_resource(url: String) -> String:
 	var clean := url.strip_edges()
 	if clean.begins_with("./"):
