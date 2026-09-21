@@ -63,6 +63,7 @@ if (-not $needsAssetRefresh) {
             -not $manifestData.assets.sand.godotUrl -or
             -not $manifestData.audio -or
             -not $manifestData.audio.blasterRifle -or
+            -not $manifestData.audio.footstepSand1 -or
             -not $manifestData.weapons -or
             -not $manifestData.weapons.blasterRifle
         )
