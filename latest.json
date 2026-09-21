@@ -1,30 +1,30 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "[2026.09.21-06.25.49:215][579]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
-    "sha":  "67f7ea4b98aad59276e8e17789d6e96045674615",
+    "diagnostics":  "[2026.09.21-06.27.12:687][  0]LogClass: Error: StructProperty FDataflowToolNodeSnapshot::Date is not initialized properly even though its struct probably has a custom default constructor. Non deterministic fields should use UPROPERTY(Meta = (IgnoreForMemberInitializationTest)) to avoid errors from this test. Module:DataflowNodes File:Public/Dataflow/DataflowToolNode.h\r\n[2026.09.21-06.27.12:706][  0]LogAutomationTest: Error: LogClass: StructProperty FDataflowToolNodeSnapshot::Date is not initialized properly even though its struct probably has a custom default constructor. Non deterministic fields should use UPROPERTY(Meta = (IgnoreForMemberInitializationTest)) to avoid errors from this test. Module:DataflowNodes File:Public/Dataflow/DataflowToolNode.h\r\n[2026.09.21-06.27.24:093][586]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
+    "sha":  "8dd6407622cbcddb624b459d73d93c29dcbec709",
     "failedStage":  null,
     "engineVersion":  "5.8",
-    "shortSha":  "67f7ea4b98aa",
+    "shortSha":  "8dd6407622cb",
     "status":  "PASS",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  19.8,
+                      "durationSeconds":  24.2,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "automation",
-                      "durationSeconds":  26.4,
+                      "durationSeconds":  25.9,
                       "timedOut":  false
                   },
                   {
                       "exitCode":  0,
                       "name":  "boot",
-                      "durationSeconds":  18.1,
+                      "durationSeconds":  17.7,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T06:26:07.9628965Z"
+    "testedAtUtc":  "2026-09-21T06:27:42.4316153Z"
 }
