@@ -4,7 +4,7 @@ extends CharacterBody3D
 signal killed(soldier: EnemySoldier)
 
 @export var maximum_health := 100.0
-@export var move_speed := 3.9
+@export var move_speed := 3.35
 @export var engage_distance := 62.0
 @export var preferred_distance := 22.0
 
@@ -219,116 +219,123 @@ func _combat_update(delta: float) -> void:
 		lost_sight_timer += delta
 
 	combat_action_timer -= delta
-	if combat_action_timer <= 0.0:
-		combat_action_timer = rng.randf_range(1.15, 2.1)
-		strafe_sign = -1.0 if rng.randf() < 0.5 else 1.0
+
+	# Shooter-first behavior: when a trooper has a clean shot at useful range,
+	# its default action is to STOP, AIM, and FIRE. Movement is a short action
+	# between bursts, not a permanent state. This avoids the old "sprint at the
+	# player forever and never become settled enough to shoot" failure mode.
+	var useful_firing_range := has_los and distance >= 8.0 and distance <= 50.0
+	if burst_remaining > 0 and useful_firing_range:
+		combat_move_mode = 0
+	elif combat_action_timer <= 0.0:
 		squad_manager.release_cover(self)
+		strafe_sign = -1.0 if rng.randf() < 0.5 else 1.0
 
 		if not has_los:
-			# Search toward the last sighting instead of blindly charging the player.
 			combat_move_mode = 5
-		elif distance < 10.5:
-			# Create space aggressively if the player rushes us.
+			combat_action_timer = rng.randf_range(0.9, 1.4)
+		elif distance < 8.0:
 			combat_move_mode = 6
-		elif under_fire_timer > 0.0 or health < maximum_health * 0.52:
+			combat_action_timer = rng.randf_range(0.55, 0.9)
+		elif under_fire_timer > 0.0:
 			cover_target = _find_cover_target()
-			combat_move_mode = 4 if cover_target != Vector3.ZERO else 1
-		elif post_burst_reposition_timer > 0.0:
-			# Shoot, move, shoot. Don't become a stationary turret after every burst.
-			combat_move_mode = 1 if rng.randf() < 0.7 else 2
-		elif squad_role == "suppress":
-			# Suppressors mostly anchor the fight and create firing windows.
-			combat_move_mode = 0 if distance <= preferred_distance + 10.0 else 3
-		elif squad_role == "flank_left":
-			combat_move_mode = 7
-			flank_commit_timer = rng.randf_range(1.2, 2.4)
-		elif squad_role == "flank_right":
-			combat_move_mode = 8
-			flank_commit_timer = rng.randf_range(1.2, 2.4)
-		elif distance > preferred_distance + 10.0:
-			combat_move_mode = 3
-		else:
-			var choice := rng.randf()
-			if choice < 0.48:
-				combat_move_mode = 0
-			elif choice < 0.78:
-				combat_move_mode = 1
+			if cover_target != Vector3.ZERO:
+				combat_move_mode = 4
+				combat_action_timer = rng.randf_range(0.7, 1.15)
 			else:
-				cover_target = _find_cover_target()
-				combat_move_mode = 4 if cover_target != Vector3.ZERO else 2
-
-	# Once a burst starts, commit to the shot sequence instead of sprinting while
-	# firing. This alone makes the enemy read much more like a shooter opponent.
-	if burst_remaining > 0 and has_los:
-		combat_move_mode = 0
+				# If there is no meaningful cover, return fire instead of doing
+				# a pointless sideways dodge every time a bolt lands.
+				combat_move_mode = 0
+				combat_action_timer = rng.randf_range(0.45, 0.75)
+		elif post_burst_reposition_timer > 0.0:
+			if squad_role == "flank_left":
+				combat_move_mode = 7
+			elif squad_role == "flank_right":
+				combat_move_mode = 8
+			else:
+				combat_move_mode = 1
+			combat_action_timer = rng.randf_range(0.55, 0.95)
+		elif useful_firing_range:
+			combat_move_mode = 0
+			combat_action_timer = rng.randf_range(0.55, 0.95)
+		elif distance > 50.0:
+			combat_move_mode = 3
+			combat_action_timer = rng.randf_range(0.7, 1.15)
+		else:
+			combat_move_mode = 0
+			combat_action_timer = rng.randf_range(0.5, 0.9)
 
 	var desired := global_position
 	match combat_move_mode:
 		0:
 			desired = global_position
 		1:
-			desired = global_position + side * 6.0 * strafe_sign
+			desired = global_position + side * 4.5 * strafe_sign
 		2:
-			desired = target_position + away * (preferred_distance + rng.randf_range(-2.0, 3.5)) + side * 4.5 * strafe_sign
+			desired = target_position + away * preferred_distance + side * 4.0 * strafe_sign
 		3:
-			desired = target_position + away * maxf(15.0, preferred_distance - 3.0) + side * 2.5 * strafe_sign
+			desired = target_position + away * 38.0 + side * 2.0 * strafe_sign
 		4:
 			desired = cover_target
 		5:
-			desired = last_seen_position + side * 5.5 * strafe_sign
+			desired = last_seen_position + side * 3.5 * strafe_sign
 		6:
-			desired = global_position + away * 8.0 + side * 3.0 * strafe_sign
+			desired = global_position + away * 7.0
 		7:
-			desired = target_position + away * (preferred_distance + 2.0) + side * 13.0
+			desired = target_position + away * 26.0 + side * 8.0
 		8:
-			desired = target_position + away * (preferred_distance + 2.0) - side * 13.0
+			desired = target_position + away * 26.0 - side * 8.0
 
-	if squad_role == "suppress" and combat_move_mode == 2:
-		desired = target_position + away * (preferred_distance + 7.0)
-
-	desired += _squad_separation() * 3.2
+	desired += _squad_separation() * 2.0
 	var move_direction := desired - global_position
 	move_direction.y = 0.0
-	var wants_to_move := move_direction.length() > 1.25 and burst_remaining <= 0
+	var wants_to_move := combat_move_mode != 0 and move_direction.length() > 1.15 and burst_remaining <= 0
+
 	if wants_to_move:
 		move_direction = _avoid_obstacle(move_direction.normalized())
-		var combat_speed := move_speed * 0.82
-		if combat_move_mode in [3, 5, 7, 8]:
+		var combat_speed := move_speed * 0.72
+		if combat_move_mode in [3, 5]:
 			combat_speed = move_speed
+		elif combat_move_mode in [7, 8]:
+			combat_speed = move_speed * 0.84
 		elif combat_move_mode == 6:
-			combat_speed = move_speed * 0.9
-		velocity.x = move_toward(velocity.x, move_direction.x * combat_speed, move_speed * 6.5 * delta)
-		velocity.z = move_toward(velocity.z, move_direction.z * combat_speed, move_speed * 6.5 * delta)
+			combat_speed = move_speed * 0.92
+		velocity.x = move_toward(velocity.x, move_direction.x * combat_speed, move_speed * 7.0 * delta)
+		velocity.z = move_toward(velocity.z, move_direction.z * combat_speed, move_speed * 7.0 * delta)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, move_speed * 10.0 * delta)
-		velocity.z = move_toward(velocity.z, 0.0, move_speed * 10.0 * delta)
+		velocity.x = move_toward(velocity.x, 0.0, move_speed * 12.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, move_speed * 12.0 * delta)
+		if combat_move_mode != 0 and move_direction.length() <= 1.15:
+			combat_move_mode = 0
+			combat_action_timer = 0.0
 
 	var face_position := target_position if has_los else last_seen_position
 	var face := face_position - global_position
 	face.y = 0.0
 	if face.length_squared() > 0.1:
 		var desired_yaw := atan2(-face.x, -face.z)
-		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 9.0))
+		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 11.0))
 
 	var planar_speed := Vector2(velocity.x, velocity.z).length()
-	if has_los and planar_speed < 0.75:
+	if useful_firing_range and combat_move_mode == 0 and planar_speed < 0.6:
 		aim_settle_timer += delta
 	else:
 		aim_settle_timer = 0.0
+
 	if (
-		has_los
+		useful_firing_range
 		and reaction_timer <= 0.0
-		and distance < engage_distance
-		and distance > 5.0
-		and planar_speed < 0.9
-		and aim_settle_timer >= 0.16
+		and combat_move_mode == 0
+		and planar_speed < 0.65
+		and aim_settle_timer >= 0.10
 		and fire_cooldown <= 0.0
 	):
 		_fire_at_target(distance)
 
-	if not has_los and lost_sight_timer > 5.5:
+	if not has_los and lost_sight_timer > 4.0:
 		target = null
 		burst_remaining = 0
+		squad_manager.release_fire_slot(self)
 		_choose_patrol_target()
 
 func _fire_at_target(distance: float) -> void:
@@ -393,7 +400,7 @@ func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vec
 		return
 	health -= amount
 	hit_stun = 0.11
-	under_fire_timer = 2.2
+	under_fire_timer = 0.8
 	combat_action_timer = 0.0
 	visual_root.rotation.x = deg_to_rad(-5.0)
 	if source is Node3D:
@@ -514,12 +521,12 @@ func _update_animation() -> void:
 	if planar_speed < 0.25:
 		_set_animation("idle")
 		animation_player.speed_scale = 1.0
-	elif target != null and is_instance_valid(target):
-		_set_animation("run")
-		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed, 0.1), 0.8, 1.25)
-	else:
+	elif planar_speed < move_speed * 0.82:
 		_set_animation("walk")
-		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed * 0.55, 0.1), 0.75, 1.2)
+		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed * 0.62, 0.1), 0.78, 1.12)
+	else:
+		_set_animation("run")
+		animation_player.speed_scale = clampf(planar_speed / maxf(move_speed, 0.1), 0.82, 1.08)
 
 func _set_animation(requested: String) -> void:
 	if animation_player == null or active_animation == requested:
