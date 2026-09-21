@@ -52,6 +52,10 @@ func _setup_noise() -> void:
 func _setup_material() -> void:
 	sand_material.albedo_color = Color(0.56, 0.36, 0.2)
 	sand_material.roughness = 0.96
+	# Procedural terrain is generated from triangle strips at runtime. Disable
+	# visual back-face culling so a winding mistake can never make the planet
+	# disappear from the player's side of the surface.
+	sand_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	rock_material.albedo_color = Color(0.31, 0.19, 0.12)
 	rock_material.roughness = 0.98
 	var imported_concrete := SwgAssetBridge.texture_for_role("concrete")
@@ -151,7 +155,13 @@ func _build_chunk(key: Vector2i) -> Node3D:
 		body.collision_layer = 1
 		body.collision_mask = 1
 		var collision := CollisionShape3D.new()
-		collision.shape = mesh.create_trimesh_shape()
+		var terrain_shape := mesh.create_trimesh_shape()
+		# Concave terrain must collide from either triangle side. Without this,
+		# the same winding that was visually culled could also let the player fall
+		# through the planet.
+		if terrain_shape is ConcavePolygonShape3D:
+			(terrain_shape as ConcavePolygonShape3D).backface_collision = true
+		collision.shape = terrain_shape
 		body.add_child(collision)
 		root.add_child(body)
 	_add_chunk_dressing(root, key, start_x, start_z)
