@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "../FHBlasterComponent.h"
+#include "../FHEnemyAIController.h"
 #include "../FHPlanetMath.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -62,6 +63,34 @@ bool FFHBlasterMuzzleConvergenceTest::RunTest(const FString& Parameters)
     TestTrue(
         TEXT("The muzzle ray should not simply fire parallel to the camera when offset."),
         !Direction.Equals(FVector::ForwardVector, KINDA_SMALL_NUMBER));
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FFHEnemyTacticalPointTest,
+    "FarHorizon.AI.TacticalPointMaintainsRangeAndAddsLateralMovement",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFHEnemyTacticalPointTest::RunTest(const FString& Parameters)
+{
+    const FVector Target(0.0, 0.0, 0.0);
+    const FVector Self(1000.0, 0.0, 0.0);
+
+    const FVector Tactical = AFHEnemyAIController::ComputeTacticalPoint(
+        Self,
+        Target,
+        1.0f,
+        1200.0f,
+        500.0f);
+
+    TestTrue(
+        TEXT("Tactical movement should preserve stand-off distance instead of collapsing onto the target."),
+        Tactical.Size2D() >= 1200.0f - KINDA_SMALL_NUMBER);
+
+    TestTrue(
+        TEXT("Tactical movement should include a lateral component rather than only charging forward/back."),
+        FMath::Abs(Tactical.Y) > KINDA_SMALL_NUMBER);
 
     return true;
 }
