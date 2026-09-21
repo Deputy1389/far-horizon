@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Misc/AutomationTest.h"
+#include "../FHBlasterComponent.h"
 #include "../FHPlanetMath.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -35,6 +36,32 @@ bool FFHPlanetAltitudeTest::RunTest(const FString& Parameters)
         TEXT("Altitude should be radial distance minus planet radius."),
         Altitude,
         500.0);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FFHBlasterMuzzleConvergenceTest,
+    "FarHorizon.Combat.BlasterMuzzleConvergesOnReticleAimPoint",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FFHBlasterMuzzleConvergenceTest::RunTest(const FString& Parameters)
+{
+    const FVector MuzzleLocation(0.0, 20.0, -10.0);
+    const FVector AimPoint(1000.0, 0.0, 0.0);
+    const FVector Direction = UFHBlasterComponent::ComputeDirectionToAimPoint(
+        MuzzleLocation,
+        AimPoint);
+
+    const FVector Expected = (AimPoint - MuzzleLocation).GetSafeNormal();
+
+    TestTrue(
+        TEXT("The muzzle ray should point at the camera-selected aim point."),
+        Direction.Equals(Expected, KINDA_SMALL_NUMBER));
+
+    TestTrue(
+        TEXT("The muzzle ray should not simply fire parallel to the camera when offset."),
+        !Direction.Equals(FVector::ForwardVector, KINDA_SMALL_NUMBER));
 
     return true;
 }
