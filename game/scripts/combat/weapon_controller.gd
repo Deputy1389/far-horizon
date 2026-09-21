@@ -73,49 +73,59 @@ func set_enabled(value: bool) -> void:
 
 func _build_first_person_arms() -> void:
 	var sleeve_material := StandardMaterial3D.new()
-	sleeve_material.albedo_color = Color(0.26, 0.22, 0.17)
-	sleeve_material.roughness = 0.9
+	sleeve_material.albedo_color = Color(0.16, 0.14, 0.115)
+	sleeve_material.roughness = 0.96
 
 	var glove_material := StandardMaterial3D.new()
-	glove_material.albedo_color = Color(0.08, 0.075, 0.07)
-	glove_material.roughness = 0.72
+	glove_material.albedo_color = Color(0.035, 0.035, 0.032)
+	glove_material.roughness = 0.76
 
-	var right_sleeve := MeshInstance3D.new()
-	var right_mesh := CylinderMesh.new()
-	right_mesh.top_radius = 0.055
-	right_mesh.bottom_radius = 0.072
-	right_mesh.height = 0.44
-	right_mesh.radial_segments = 8
-	right_sleeve.mesh = right_mesh
-	right_sleeve.position = Vector3(0.17, -0.15, 0.13)
-	right_sleeve.rotation = Vector3(deg_to_rad(72.0), deg_to_rad(-8.0), deg_to_rad(-6.0))
-	right_sleeve.material_override = sleeve_material
-	arms_root.add_child(right_sleeve)
+	# Keep the first-person body presence subtle. These are intentionally
+	# compact forearms rather than the previous giant cylinders that dominated
+	# the bottom half of the screen.
+	_add_arm_segment(
+		Vector3(0.30, -0.33, 0.16),
+		Vector3(0.11, -0.10, -0.12),
+		0.052,
+		sleeve_material
+	)
+	_add_arm_segment(
+		Vector3(-0.25, -0.30, 0.10),
+		Vector3(-0.075, -0.075, -0.25),
+		0.048,
+		sleeve_material
+	)
+	_add_hand(Vector3(0.105, -0.085, -0.13), Vector3(0.09, 0.075, 0.13), glove_material)
+	_add_hand(Vector3(-0.072, -0.065, -0.25), Vector3(0.085, 0.07, 0.12), glove_material)
 
-	var left_sleeve := MeshInstance3D.new()
-	var left_mesh := CylinderMesh.new()
-	left_mesh.top_radius = 0.052
-	left_mesh.bottom_radius = 0.068
-	left_mesh.height = 0.40
-	left_mesh.radial_segments = 8
-	left_sleeve.mesh = left_mesh
-	left_sleeve.position = Vector3(-0.12, -0.12, -0.04)
-	left_sleeve.rotation = Vector3(deg_to_rad(68.0), deg_to_rad(12.0), deg_to_rad(8.0))
-	left_sleeve.material_override = sleeve_material
-	arms_root.add_child(left_sleeve)
 
-	for hand_position in [Vector3(0.12, -0.07, -0.10), Vector3(-0.075, -0.055, -0.23)]:
-		var hand := MeshInstance3D.new()
-		var hand_mesh := SphereMesh.new()
-		hand_mesh.radius = 0.07
-		hand_mesh.height = 0.14
-		hand_mesh.radial_segments = 8
-		hand_mesh.rings = 4
-		hand.mesh = hand_mesh
-		hand.position = hand_position
-		hand.scale = Vector3(0.8, 0.7, 1.15)
-		hand.material_override = glove_material
-		arms_root.add_child(hand)
+func _add_arm_segment(from: Vector3, to: Vector3, radius: float, material: Material) -> void:
+	var direction := to - from
+	var length := direction.length()
+	if length <= 0.001:
+		return
+	var segment := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius * 0.88
+	mesh.bottom_radius = radius
+	mesh.height = length
+	mesh.radial_segments = 10
+	segment.mesh = mesh
+	segment.position = (from + to) * 0.5
+	segment.rotation = Quaternion(Vector3.UP, direction.normalized()).get_euler()
+	segment.material_override = material
+	arms_root.add_child(segment)
+
+
+func _add_hand(position: Vector3, size: Vector3, material: Material) -> void:
+	var hand := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	hand.mesh = mesh
+	hand.position = position
+	hand.rotation = Vector3(deg_to_rad(-8.0), deg_to_rad(4.0), deg_to_rad(-5.0))
+	hand.material_override = material
+	arms_root.add_child(hand)
 
 func _build_scope_overlay() -> void:
 	scope_layer.layer = 40
@@ -311,10 +321,16 @@ func _fire() -> void:
 	var weapon := current_weapon()
 	cooldown = 1.0 / maxf(weapon.rounds_per_second, 0.1)
 
-	var direction := -camera.global_basis.z
+	# Spread is evaluated from the camera/reticle, then the physical bolt leaves
+	# the muzzle toward that camera-space aim point. This makes hip fire and ADS
+	# converge on the center reticle instead of landing low-right because the
+	# muzzle is offset from the camera.
+	var camera_direction := -camera.global_basis.z
 	var spread_degrees := weapon.ads_spread_degrees if aiming else weapon.hip_spread_degrees
 	spread_degrees += heat * (0.18 if aiming else 0.42)
-	direction = _apply_spread(direction, deg_to_rad(spread_degrees))
+	camera_direction = _apply_spread(camera_direction, deg_to_rad(spread_degrees))
+	var aim_point := _camera_aim_point(camera_direction)
+	var direction := (aim_point - muzzle.global_position).normalized()
 
 	var bolt := BlasterBolt.new()
 	get_tree().current_scene.add_child(bolt)
@@ -350,6 +366,19 @@ func _fire() -> void:
 			rng.randf_range(-weapon.recoil_yaw_degrees, weapon.recoil_yaw_degrees)
 		)
 	fired.emit()
+
+
+func _camera_aim_point(direction: Vector3) -> Vector3:
+	var origin := camera.global_position
+	var endpoint := origin + direction.normalized() * 650.0
+	var query := PhysicsRayQueryParameters3D.create(origin, endpoint)
+	if owner_body is CollisionObject3D:
+		query.exclude = [(owner_body as CollisionObject3D).get_rid()]
+	var hit := camera.get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		return hit["position"] as Vector3
+	return endpoint
+
 
 func _on_bolt_damaged_target() -> void:
 	hit_confirmed.emit()
