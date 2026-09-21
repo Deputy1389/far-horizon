@@ -146,7 +146,7 @@ static func audio_for_role(role: String) -> AudioStream:
 	return resource as AudioStream if resource is AudioStream else null
 
 
-static func instantiate_weapon(role: String) -> Node3D:
+static func instantiate_weapon(role: String, orient_for_viewmodel: bool = true) -> Node3D:
 	var data: Dictionary = manifest()
 	var weapons_value: Variant = data.get("weapons", {})
 	if not weapons_value is Dictionary:
@@ -175,9 +175,11 @@ static func instantiate_weapon(role: String) -> Node3D:
 	var current_length := _visual_longest_axis(visual)
 	if current_length > 0.001:
 		visual.scale = Vector3.ONE * (target_length / current_length)
-	# SWG static weapon meshes are authored in world space rather than as a
-	# first-person viewmodel. Rotate into Godot camera-forward convention.
-	visual.rotation = Vector3(0.0, PI, 0.0)
+	# SWG static weapon meshes keep their authored orientation for attachment to
+	# character hardpoints. First-person viewmodels request a 180-degree yaw so
+	# the rifle points down Godot's -Z camera-forward convention.
+	if orient_for_viewmodel:
+		visual.rotation = Vector3(0.0, PI, 0.0)
 	return visual
 
 
