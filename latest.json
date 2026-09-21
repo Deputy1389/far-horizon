@@ -1,8 +1,8 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFrontierWorld.cpp(120,47): error C2445: result type of conditional expression is ambiguous: types \u0027UStaticMesh *\u0027 and \u0027TObjectPtr\u003cUStaticMesh\u003e\u0027 can be converted to multiple common types\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFrontierWorld.cpp(118,9): error C2064: term does not evaluate to a function taking 3 arguments",
-    "sha":  "a4528aa1ceb7989ba33cdcf5094dde88cbcd4578",
-    "failedStage":  "build",
+    "diagnostics":  "[2026.09.21-08.03.11:972][594]LogAutomationCommandLine: Shutting down. GIsCriticalError=0",
+    "sha":  "f66cb207802410064e0fe3962b86ee61855eed67",
+    "failedStage":  null,
     "engineVersion":  "5.8",
     "epicTemplate":  {
                          "assetCount":  346,
@@ -69,15 +69,27 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "a4528aa1ceb7",
-    "status":  "FAIL",
+    "shortSha":  "f66cb2078024",
+    "status":  "PASS",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  13.8,
+                      "durationSeconds":  14.5,
+                      "timedOut":  false
+                  },
+                  {
+                      "exitCode":  0,
+                      "name":  "automation",
+                      "durationSeconds":  25.3,
+                      "timedOut":  false
+                  },
+                  {
+                      "exitCode":  0,
+                      "name":  "boot",
+                      "durationSeconds":  17.2,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T08:02:05.4286981Z"
+    "testedAtUtc":  "2026-09-21T08:03:29.6396917Z"
 }
