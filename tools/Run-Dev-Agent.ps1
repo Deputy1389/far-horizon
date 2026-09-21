@@ -548,6 +548,15 @@ while ($true) {
         $sha = Get-FHRemoteSha
 
         if ($sha -ne $lastSha) {
+            # Ensure the newly advertised remote commit actually exists in the
+            # local object database before the isolated worktree resets to it.
+            Invoke-FHGit -WorkingDirectory $RepoRoot -Arguments @(
+                "fetch",
+                "--no-tags",
+                $Remote,
+                "refs/heads/$Branch"
+            ) | Out-Null
+
             $validationParams = @{
                 Sha = $sha
                 TestPath = $testPath
