@@ -29,6 +29,7 @@ var combat_action_timer := 0.0
 var combat_move_mode := 0
 var strafe_sign := 1.0
 var burst_remaining := 0
+var cover_target := Vector3.ZERO
 
 var visual_root := Node3D.new()
 var muzzle := Marker3D.new()
@@ -198,7 +199,10 @@ func _combat_update(delta: float) -> void:
 	combat_action_timer -= delta
 	if combat_action_timer <= 0.0:
 		combat_action_timer = rng.randf_range(0.75, 1.6)
-		if distance > preferred_distance + 12.0:
+		if health < maximum_health * 0.48 and rng.randf() < 0.55:
+			cover_target = _find_cover_target()
+			combat_move_mode = 4 if cover_target != Vector3.ZERO else rng.randi_range(0, 3)
+		elif distance > preferred_distance + 12.0:
 			combat_move_mode = 3
 		else:
 			combat_move_mode = rng.randi_range(0, 3)
@@ -212,8 +216,10 @@ func _combat_update(delta: float) -> void:
 			desired = global_position + side * 7.5 * strafe_sign
 		2:
 			desired = target_position + away * (preferred_distance + rng.randf_range(-3.0, 4.0)) + side * 5.0 * strafe_sign
-		_:
+		3:
 			desired = target_position + away * maxf(11.0, preferred_distance - 5.0)
+		_:
+			desired = cover_target
 
 	if squad_role == "flank_left":
 		desired += side * 8.0
@@ -320,6 +326,30 @@ func _update_death(delta: float) -> void:
 	visual_root.position.y = lerpf(visual_root.position.y, -0.22, 1.0 - exp(-delta * 5.0))
 	if death_timer <= 0.0:
 		queue_free()
+
+func _find_cover_target() -> Vector3:
+	if target == null or not is_instance_valid(target):
+		return Vector3.ZERO
+	var best := Vector3.ZERO
+	var best_score := INF
+	for candidate in get_tree().get_nodes_in_group("combat_cover"):
+		if not candidate is Node3D:
+			continue
+		var cover := candidate as Node3D
+		var distance := global_position.distance_to(cover.global_position)
+		if distance < 2.5 or distance > 22.0:
+			continue
+		var from_player := cover.global_position - target.global_position
+		from_player.y = 0.0
+		if from_player.length_squared() < 0.01:
+			continue
+		var hide_position := cover.global_position + from_player.normalized() * 1.4
+		var score := distance + target.global_position.distance_to(hide_position) * 0.04
+		if score < best_score:
+			best_score = score
+			best = hide_position
+	return best
+
 
 func _avoid_obstacle(direction: Vector3) -> Vector3:
 	if direction.length_squared() < 0.001:
