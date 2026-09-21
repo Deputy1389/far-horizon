@@ -42,62 +42,103 @@ AFHPlayerCharacter::AFHPlayerCharacter()
     WeaponMuzzle->SetupAttachment(WeaponRoot);
     WeaponMuzzle->SetRelativeLocation(FVector(75.0, 0.0, 0.0));
 
-    UStaticMesh* Cube = LoadObject<UStaticMesh>(
+    UStaticMesh* LocalSwgRifle = LoadObject<UStaticMesh>(
         nullptr,
-        TEXT("/Engine/BasicShapes/Cube.Cube"));
-    UStaticMesh* Cylinder = LoadObject<UStaticMesh>(
-        nullptr,
-        TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+        TEXT("/Game/FarHorizon/LocalSWG/Models/SM_SWG_BlasterRifle.SM_SWG_BlasterRifle"));
 
-    auto AddWeaponPart = [this](
-        const TCHAR* Name,
-        UStaticMesh* MeshAsset,
-        const FVector& Location,
-        const FVector& Scale,
-        const FRotator& Rotation = FRotator::ZeroRotator)
+    if (LocalSwgRifle)
     {
-        if (!MeshAsset)
+        UStaticMeshComponent* Rifle =
+            CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SWGBlasterRifle"));
+
+        Rifle->SetupAttachment(WeaponRoot);
+        Rifle->SetStaticMesh(LocalSwgRifle);
+        Rifle->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Rifle->SetCastShadow(false);
+        Rifle->SetOnlyOwnerSee(true);
+
+        const FBoxSphereBounds Bounds = LocalSwgRifle->GetBounds();
+        const FVector Extents = Bounds.BoxExtent;
+        const float LongestDimension =
+            FMath::Max3(Extents.X, Extents.Y, Extents.Z) * 2.0f;
+        const float UniformScale =
+            92.0f / FMath::Max(1.0f, LongestDimension);
+
+        FRotator AxisCorrection = FRotator::ZeroRotator;
+        if (Extents.Z >= Extents.X && Extents.Z >= Extents.Y)
         {
-            return;
+            AxisCorrection = FRotator(-90.0f, 0.0f, 0.0f);
+        }
+        else if (Extents.Y >= Extents.X)
+        {
+            AxisCorrection = FRotator(0.0f, -90.0f, 0.0f);
         }
 
-        UStaticMeshComponent* Part =
-            CreateDefaultSubobject<UStaticMeshComponent>(Name);
-        Part->SetupAttachment(WeaponRoot);
-        Part->SetStaticMesh(MeshAsset);
-        Part->SetRelativeLocation(Location);
-        Part->SetRelativeScale3D(Scale);
-        Part->SetRelativeRotation(Rotation);
-        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        Part->SetCastShadow(false);
-        Part->SetOnlyOwnerSee(true);
-    };
+        Rifle->SetRelativeScale3D(FVector(UniformScale));
+        Rifle->SetRelativeRotation(AxisCorrection);
+        Rifle->SetRelativeLocation(FVector(46.0f, 14.0f, -12.0f));
 
-    AddWeaponPart(
-        TEXT("WeaponReceiver"),
-        Cube,
-        FVector(24.0, 0.0, 0.0),
-        FVector(0.42, 0.075, 0.09));
+        WeaponMuzzle->SetRelativeLocation(FVector(96.0f, 0.0f, 0.0f));
+    }
+    else
+    {
+        UStaticMesh* Cube = LoadObject<UStaticMesh>(
+            nullptr,
+            TEXT("/Engine/BasicShapes/Cube.Cube"));
+        UStaticMesh* Cylinder = LoadObject<UStaticMesh>(
+            nullptr,
+            TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 
-    AddWeaponPart(
-        TEXT("WeaponBarrel"),
-        Cylinder,
-        FVector(61.0, 0.0, 0.0),
-        FVector(0.045, 0.045, 0.35),
-        FRotator(0.0, 90.0, 0.0));
+        auto AddWeaponPart = [this](
+            const TCHAR* Name,
+            UStaticMesh* MeshAsset,
+            const FVector& Location,
+            const FVector& Scale,
+            const FRotator& Rotation = FRotator::ZeroRotator)
+        {
+            if (!MeshAsset)
+            {
+                return;
+            }
 
-    AddWeaponPart(
-        TEXT("WeaponStock"),
-        Cube,
-        FVector(-10.0, 0.0, -4.0),
-        FVector(0.22, 0.09, 0.12),
-        FRotator(0.0, -8.0, 0.0));
+            UStaticMeshComponent* Part =
+                CreateDefaultSubobject<UStaticMeshComponent>(Name);
+            Part->SetupAttachment(WeaponRoot);
+            Part->SetStaticMesh(MeshAsset);
+            Part->SetRelativeLocation(Location);
+            Part->SetRelativeScale3D(Scale);
+            Part->SetRelativeRotation(Rotation);
+            Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Part->SetCastShadow(false);
+            Part->SetOnlyOwnerSee(true);
+        };
 
-    AddWeaponPart(
-        TEXT("WeaponSight"),
-        Cube,
-        FVector(28.0, 0.0, 10.0),
-        FVector(0.06, 0.035, 0.07));
+        AddWeaponPart(
+            TEXT("WeaponReceiver"),
+            Cube,
+            FVector(24.0, 0.0, 0.0),
+            FVector(0.42, 0.075, 0.09));
+
+        AddWeaponPart(
+            TEXT("WeaponBarrel"),
+            Cylinder,
+            FVector(61.0, 0.0, 0.0),
+            FVector(0.045, 0.045, 0.35),
+            FRotator(0.0, 90.0, 0.0));
+
+        AddWeaponPart(
+            TEXT("WeaponStock"),
+            Cube,
+            FVector(-10.0, 0.0, -4.0),
+            FVector(0.22, 0.09, 0.12),
+            FRotator(0.0, -8.0, 0.0));
+
+        AddWeaponPart(
+            TEXT("WeaponSight"),
+            Cube,
+            FVector(28.0, 0.0, 10.0),
+            FVector(0.06, 0.035, 0.07));
+    }
 
     Blaster = CreateDefaultSubobject<UFHBlasterComponent>(TEXT("Blaster"));
     Health = CreateDefaultSubobject<UFHHealthComponent>(TEXT("Health"));
