@@ -2,6 +2,37 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# Local/generated SWG import payloads
 assets/local-swg/
-.godot/
 .runtime/
+
+# Legacy Godot generated state
+.godot/
+
+# Unreal generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+*.VC.db
+*.VC.opendb
+*.sln
+
+
+# Local-only Epic UE 5.8 First Person template content installed by
+# tools/Install-Epic-FPS-Foundation.ps1. Far Horizon-owned production assets
+# belong under Content/FarHorizon.
+Content/FirstPerson/
+Content/Variant_*/
+Content/Characters/
+Content/Weapons/
+Content/LevelPrototyping/
+
+# Local-only Unreal assets imported from the user's SWG installation
+Content/FarHorizon/LocalSWG/
+
+# Obsolete copied Epic template external actor data
+Content/__ExternalActors__/
+Content/__ExternalObjects__/

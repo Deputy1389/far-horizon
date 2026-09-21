@@ -1,0 +1,396 @@
+#include "FHPlayerCharacter.h"
+
+#include "FHBlasterComponent.h"
+#include "FHHealthComponent.h"
+#include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SceneComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
+#include "InputModifiers.h"
+#include "InputCoreTypes.h"
+#include "Math/RotationMatrix.h"
+
+AFHPlayerCharacter::AFHPlayerCharacter()
+{
+    PrimaryActorTick.bCanEverTick = true;
+
+    FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
+    FirstPersonCamera->SetupAttachment(GetCapsuleComponent());
+    FirstPersonCamera->SetRelativeLocation(FVector(0.0, 0.0, 64.0));
+    FirstPersonCamera->bUsePawnControlRotation = true;
+    FirstPersonCamera->SetFieldOfView(HipFov);
+
+    FirstPersonArms = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonArms"));
+    FirstPersonArms->SetupAttachment(FirstPersonCamera);
+    FirstPersonArms->SetOnlyOwnerSee(true);
+    FirstPersonArms->SetCastShadow(false);
+    FirstPersonArms->bCastDynamicShadow = false;
+    FirstPersonArms->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    WeaponRoot = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponRoot"));
+    WeaponRoot->SetupAttachment(FirstPersonCamera);
+    WeaponRoot->SetRelativeLocation(FVector(35.0, 12.0, -12.0));
+
+    WeaponMuzzle = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponMuzzle"));
+    WeaponMuzzle->SetupAttachment(WeaponRoot);
+    WeaponMuzzle->SetRelativeLocation(FVector(75.0, 0.0, 0.0));
+
+    UStaticMesh* LocalSwgRifle = LoadObject<UStaticMesh>(
+        nullptr,
+        TEXT("/Game/FarHorizon/LocalSWG/Models/SM_SWG_BlasterRifle.SM_SWG_BlasterRifle"));
+
+    if (LocalSwgRifle)
+    {
+        UStaticMeshComponent* Rifle =
+            CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SWGBlasterRifle"));
+
+        Rifle->SetupAttachment(WeaponRoot);
+        Rifle->SetStaticMesh(LocalSwgRifle);
+        Rifle->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Rifle->SetCastShadow(false);
+        Rifle->SetOnlyOwnerSee(true);
+
+        const FBoxSphereBounds Bounds = LocalSwgRifle->GetBounds();
+        const FVector Extents = Bounds.BoxExtent;
+        const float LongestDimension =
+            FMath::Max3(Extents.X, Extents.Y, Extents.Z) * 2.0f;
+        const float UniformScale =
+            92.0f / FMath::Max(1.0f, LongestDimension);
+
+        FRotator AxisCorrection = FRotator::ZeroRotator;
+        if (Extents.Z >= Extents.X && Extents.Z >= Extents.Y)
+        {
+            AxisCorrection = FRotator(-90.0f, 0.0f, 0.0f);
+        }
+        else if (Extents.Y >= Extents.X)
+        {
+            AxisCorrection = FRotator(0.0f, -90.0f, 0.0f);
+        }
+
+        Rifle->SetRelativeScale3D(FVector(UniformScale));
+        Rifle->SetRelativeRotation(AxisCorrection);
+        Rifle->SetRelativeLocation(FVector(46.0f, 14.0f, -12.0f));
+
+        WeaponMuzzle->SetRelativeLocation(FVector(96.0f, 0.0f, 0.0f));
+    }
+    else
+    {
+        UStaticMesh* Cube = LoadObject<UStaticMesh>(
+            nullptr,
+            TEXT("/Engine/BasicShapes/Cube.Cube"));
+        UStaticMesh* Cylinder = LoadObject<UStaticMesh>(
+            nullptr,
+            TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+
+        auto AddWeaponPart = [this](
+            const TCHAR* Name,
+            UStaticMesh* MeshAsset,
+            const FVector& Location,
+            const FVector& Scale,
+            const FRotator& Rotation = FRotator::ZeroRotator)
+        {
+            if (!MeshAsset)
+            {
+                return;
+            }
+
+            UStaticMeshComponent* Part =
+                CreateDefaultSubobject<UStaticMeshComponent>(Name);
+            Part->SetupAttachment(WeaponRoot);
+            Part->SetStaticMesh(MeshAsset);
+            Part->SetRelativeLocation(Location);
+            Part->SetRelativeScale3D(Scale);
+            Part->SetRelativeRotation(Rotation);
+            Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Part->SetCastShadow(false);
+            Part->SetOnlyOwnerSee(true);
+        };
+
+        AddWeaponPart(
+            TEXT("WeaponReceiver"),
+            Cube,
+            FVector(24.0, 0.0, 0.0),
+            FVector(0.42, 0.075, 0.09));
+
+        AddWeaponPart(
+            TEXT("WeaponBarrel"),
+            Cylinder,
+            FVector(61.0, 0.0, 0.0),
+            FVector(0.045, 0.045, 0.35),
+            FRotator(0.0, 90.0, 0.0));
+
+        AddWeaponPart(
+            TEXT("WeaponStock"),
+            Cube,
+            FVector(-10.0, 0.0, -4.0),
+            FVector(0.22, 0.09, 0.12),
+            FRotator(0.0, -8.0, 0.0));
+
+        AddWeaponPart(
+            TEXT("WeaponSight"),
+            Cube,
+            FVector(28.0, 0.0, 10.0),
+            FVector(0.06, 0.035, 0.07));
+    }
+
+    Blaster = CreateDefaultSubobject<UFHBlasterComponent>(TEXT("Blaster"));
+    Health = CreateDefaultSubobject<UFHHealthComponent>(TEXT("Health"));
+
+    bUseControllerRotationPitch = false;
+    bUseControllerRotationYaw = true;
+    bUseControllerRotationRoll = false;
+
+    GetMesh()->SetOwnerNoSee(true);
+
+    UCharacterMovementComponent* Movement = GetCharacterMovement();
+    Movement->bOrientRotationToMovement = false;
+    Movement->MaxWalkSpeed = WalkSpeed;
+    Movement->BrakingDecelerationWalking = 1800.0f;
+    Movement->GroundFriction = 8.0f;
+    Movement->GetNavAgentPropertiesRef().bCanCrouch = true;
+}
+
+void AFHPlayerCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+
+    if (Health)
+    {
+        Health->OnDeath.AddDynamic(this, &AFHPlayerCharacter::HandleDeath);
+    }
+}
+
+void AFHPlayerCharacter::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+
+    if (FirstPersonCamera)
+    {
+        const float DesiredFov = bIsAiming ? AimFov : HipFov;
+        const float NewFov = FMath::FInterpTo(
+            FirstPersonCamera->FieldOfView,
+            DesiredFov,
+            DeltaSeconds,
+            AimFovInterpSpeed);
+        FirstPersonCamera->SetFieldOfView(NewFov);
+    }
+}
+
+void AFHPlayerCharacter::PawnClientRestart()
+{
+    Super::PawnClientRestart();
+
+    EnsureRuntimeInputObjects();
+
+    APlayerController* PlayerController = Cast<APlayerController>(Controller);
+    if (!PlayerController || !PlayerController->GetLocalPlayer())
+    {
+        return;
+    }
+
+    if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem =
+        ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
+    {
+        InputSubsystem->RemoveMappingContext(DefaultInputContext);
+        InputSubsystem->AddMappingContext(DefaultInputContext, 0);
+    }
+}
+
+void AFHPlayerCharacter::EnsureRuntimeInputObjects()
+{
+    if (DefaultInputContext)
+    {
+        return;
+    }
+
+    DefaultInputContext = NewObject<UInputMappingContext>(this, TEXT("IMC_FarHorizon_Player"));
+
+    MoveAction = NewObject<UInputAction>(this, TEXT("IA_Move"));
+    MoveAction->ValueType = EInputActionValueType::Axis2D;
+    MoveAction->AccumulationBehavior = EInputActionAccumulationBehavior::Cumulative;
+
+    LookAction = NewObject<UInputAction>(this, TEXT("IA_Look"));
+    LookAction->ValueType = EInputActionValueType::Axis2D;
+
+    JumpAction = NewObject<UInputAction>(this, TEXT("IA_Jump"));
+    JumpAction->ValueType = EInputActionValueType::Boolean;
+
+    SprintAction = NewObject<UInputAction>(this, TEXT("IA_Sprint"));
+    SprintAction->ValueType = EInputActionValueType::Boolean;
+
+    CrouchAction = NewObject<UInputAction>(this, TEXT("IA_Crouch"));
+    CrouchAction->ValueType = EInputActionValueType::Boolean;
+
+    AimAction = NewObject<UInputAction>(this, TEXT("IA_Aim"));
+    AimAction->ValueType = EInputActionValueType::Boolean;
+
+    FireAction = NewObject<UInputAction>(this, TEXT("IA_Fire"));
+    FireAction->ValueType = EInputActionValueType::Boolean;
+
+    auto AddNegateX = [this](FEnhancedActionKeyMapping& Mapping)
+    {
+        UInputModifierNegate* Negate = NewObject<UInputModifierNegate>(DefaultInputContext);
+        Negate->bX = true;
+        Negate->bY = false;
+        Negate->bZ = false;
+        Mapping.Modifiers.Add(Negate);
+    };
+
+    auto AddSwizzleToY = [this](FEnhancedActionKeyMapping& Mapping)
+    {
+        UInputModifierSwizzleAxis* Swizzle = NewObject<UInputModifierSwizzleAxis>(DefaultInputContext);
+        Swizzle->Order = EInputAxisSwizzle::YXZ;
+        Mapping.Modifiers.Add(Swizzle);
+    };
+
+    FEnhancedActionKeyMapping& Forward = DefaultInputContext->MapKey(MoveAction, EKeys::W);
+    AddSwizzleToY(Forward);
+
+    FEnhancedActionKeyMapping& Backward = DefaultInputContext->MapKey(MoveAction, EKeys::S);
+    AddNegateX(Backward);
+    AddSwizzleToY(Backward);
+
+    DefaultInputContext->MapKey(MoveAction, EKeys::D);
+
+    FEnhancedActionKeyMapping& Left = DefaultInputContext->MapKey(MoveAction, EKeys::A);
+    AddNegateX(Left);
+
+    DefaultInputContext->MapKey(MoveAction, EKeys::Gamepad_Left2D);
+    DefaultInputContext->MapKey(LookAction, EKeys::Mouse2D);
+    DefaultInputContext->MapKey(LookAction, EKeys::Gamepad_Right2D);
+
+    DefaultInputContext->MapKey(JumpAction, EKeys::SpaceBar);
+    DefaultInputContext->MapKey(SprintAction, EKeys::LeftShift);
+    DefaultInputContext->MapKey(CrouchAction, EKeys::LeftControl);
+    DefaultInputContext->MapKey(AimAction, EKeys::RightMouseButton);
+    DefaultInputContext->MapKey(FireAction, EKeys::LeftMouseButton);
+}
+
+void AFHPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
+    EnsureRuntimeInputObjects();
+
+    UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+    if (!EnhancedInput)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Far Horizon requires UEnhancedInputComponent."));
+        return;
+    }
+
+    EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AFHPlayerCharacter::Move);
+    EnhancedInput->BindAction(LookAction, ETriggerEvent::Triggered, this, &AFHPlayerCharacter::Look);
+
+    EnhancedInput->BindAction(JumpAction, ETriggerEvent::Started, this, &AFHPlayerCharacter::StartJump);
+    EnhancedInput->BindAction(JumpAction, ETriggerEvent::Completed, this, &AFHPlayerCharacter::StopJump);
+
+    EnhancedInput->BindAction(SprintAction, ETriggerEvent::Started, this, &AFHPlayerCharacter::StartSprint);
+    EnhancedInput->BindAction(SprintAction, ETriggerEvent::Completed, this, &AFHPlayerCharacter::StopSprint);
+
+    EnhancedInput->BindAction(CrouchAction, ETriggerEvent::Started, this, &AFHPlayerCharacter::ToggleCrouch);
+    EnhancedInput->BindAction(AimAction, ETriggerEvent::Started, this, &AFHPlayerCharacter::StartAim);
+    EnhancedInput->BindAction(AimAction, ETriggerEvent::Completed, this, &AFHPlayerCharacter::StopAim);
+    EnhancedInput->BindAction(FireAction, ETriggerEvent::Triggered, this, &AFHPlayerCharacter::Fire);
+}
+
+void AFHPlayerCharacter::Move(const FInputActionValue& Value)
+{
+    if (!Controller)
+    {
+        return;
+    }
+
+    const FVector2D Movement = Value.Get<FVector2D>();
+    const FRotator ControlRotation = Controller->GetControlRotation();
+    const FRotator YawRotation(0.0f, ControlRotation.Yaw, 0.0f);
+
+    const FVector Forward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+    const FVector Right = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+    AddMovementInput(Forward, Movement.Y);
+    AddMovementInput(Right, Movement.X);
+}
+
+void AFHPlayerCharacter::Look(const FInputActionValue& Value)
+{
+    const FVector2D LookInput = Value.Get<FVector2D>();
+    AddControllerYawInput(LookInput.X * LookSensitivity);
+    AddControllerPitchInput(-LookInput.Y * LookSensitivity);
+}
+
+void AFHPlayerCharacter::StartJump()
+{
+    Jump();
+}
+
+void AFHPlayerCharacter::StopJump()
+{
+    StopJumping();
+}
+
+void AFHPlayerCharacter::StartSprint()
+{
+    bIsSprinting = true;
+    GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+}
+
+void AFHPlayerCharacter::StopSprint()
+{
+    bIsSprinting = false;
+    GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
+}
+
+void AFHPlayerCharacter::ToggleCrouch()
+{
+    if (bIsCrouched)
+    {
+        UnCrouch();
+        return;
+    }
+
+    StopSprint();
+    Crouch();
+}
+
+void AFHPlayerCharacter::StartAim()
+{
+    bIsAiming = true;
+}
+
+void AFHPlayerCharacter::StopAim()
+{
+    bIsAiming = false;
+}
+
+void AFHPlayerCharacter::Fire()
+{
+    if (!FirstPersonCamera || !WeaponMuzzle || !Blaster)
+    {
+        return;
+    }
+
+    Blaster->TryFire(
+        FirstPersonCamera->GetComponentLocation(),
+        FirstPersonCamera->GetForwardVector(),
+        WeaponMuzzle->GetComponentLocation(),
+        Controller);
+}
+
+void AFHPlayerCharacter::HandleDeath(AActor* DeadActor)
+{
+    StopSprint();
+    bIsAiming = false;
+    GetCharacterMovement()->DisableMovement();
+
+    if (APlayerController* PlayerController = Cast<APlayerController>(Controller))
+    {
+        DisableInput(PlayerController);
+    }
+}
