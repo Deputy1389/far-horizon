@@ -20,10 +20,3 @@ Saved/
 *.VC.opendb
 *.sln
 
-# Local junctions to Epic's installed UE 5.8 First Person template.
-# Far Horizon-owned assets belong under Content/FarHorizon.
-Content/FirstPerson/
-Content/Variant_Shooter/
-Content/Characters/
-Content/Weapons/
-Content/LevelPrototyping/
