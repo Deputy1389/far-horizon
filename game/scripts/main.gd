@@ -190,7 +190,9 @@ func _spawn_enemies() -> void:
 		var distances := [48.0, 58.0, 68.0]
 		var lateral := [-5.0, 4.0, 0.0]
 		for index in range(distances.size()):
-			var patrol_position := player.global_position + forward * distances[index] + side * lateral[index]
+			var patrol_distance: float = float(distances[index])
+			var lateral_offset: float = float(lateral[index])
+			var patrol_position: Vector3 = player.global_position + forward * patrol_distance + side * lateral_offset
 			patrol_position.y = planet.surface_y(patrol_position.x, patrol_position.z) + 0.15
 			_spawn_enemy(patrol_position, "approach_patrol")
 
