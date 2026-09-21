@@ -90,16 +90,27 @@ if ($CleanImport -and (Test-Path $cache)) {
     Remove-Item -Recurse -Force $cache
 }
 
+$runtimeDir = Join-Path $Repo ".runtime"
+New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+
 if ($needsGodotImport) {
     Write-Host "Rebuilding Godot import/script-class cache..." -ForegroundColor Cyan
-    & $godot --headless --editor --path $Repo --quit-after 3
+    $importLog = Join-Path $runtimeDir "godot-import.log"
+    Remove-Item $importLog -Force -ErrorAction SilentlyContinue
+
+    # Godot's --import mode waits for resource import/file scanning to finish
+    # before quitting. Do not use --quit-after here: that can abort the initial
+    # filesystem scan and leave the generated global-script-class cache incomplete.
+    & $godot --headless --import --path $Repo --log-file $importLog
     if ($LASTEXITCODE -ne 0) {
+        Write-Host "Godot import bootstrap failed. Last import log lines:" -ForegroundColor Red
+        if (Test-Path $importLog) {
+            Get-Content $importLog -Tail 120
+        }
         throw "Godot import bootstrap failed with exit code $LASTEXITCODE."
     }
 }
 
-$runtimeDir = Join-Path $Repo ".runtime"
-New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $runtimeLog = Join-Path $runtimeDir "foundation-runtime-$stamp.log"
 $arguments = @("--path", $Repo, "--log-file", $runtimeLog)
