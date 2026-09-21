@@ -17,6 +17,7 @@ var rng := RandomNumberGenerator.new()
 var viewmodel := Node3D.new()
 var muzzle := Marker3D.new()
 var weapon_mesh := MeshInstance3D.new()
+var imported_weapon: Node3D
 var muzzle_flash_mesh := MeshInstance3D.new()
 var muzzle_flash_light := OmniLight3D.new()
 var fire_audio := AudioStreamPlayer.new()
@@ -127,20 +128,33 @@ func _rebuild_viewmodel() -> void:
 	if weapons.is_empty():
 		return
 	var weapon := current_weapon()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.13, 0.12, 0.46 if current_index == 0 else 0.72)
-	weapon_mesh.mesh = mesh
+	if imported_weapon != null and is_instance_valid(imported_weapon):
+		imported_weapon.queue_free()
+		imported_weapon = null
 
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.08, 0.09, 0.1)
-	material.metallic = 0.72
-	material.roughness = 0.33
-	weapon_mesh.material_override = material
-	weapon_mesh.position = Vector3.ZERO
+	var role := "blasterPistol" if current_index == 0 else "blasterRifle"
+	imported_weapon = SwgAssetBridge.instantiate_weapon(role)
+	if imported_weapon != null:
+		viewmodel.add_child(imported_weapon)
+		imported_weapon.position = Vector3.ZERO
+		weapon_mesh.visible = false
+	else:
+		weapon_mesh.visible = true
+		var mesh := BoxMesh.new()
+		mesh.size = Vector3(0.13, 0.12, 0.46 if current_index == 0 else 0.72)
+		weapon_mesh.mesh = mesh
+
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color(0.08, 0.09, 0.1)
+		material.metallic = 0.72
+		material.roughness = 0.33
+		weapon_mesh.material_override = material
+		weapon_mesh.position = Vector3.ZERO
+
 	viewmodel.position = weapon.viewmodel_offset
 	viewmodel.scale = weapon.viewmodel_scale
-	muzzle.position = Vector3(0.0, 0.0, -mesh.size.z * 0.58)
-	fire_audio.stream = SwgAssetBridge.audio_for_role("blasterPistol" if current_index == 0 else "blasterRifle")
+	muzzle.position = Vector3(0.0, 0.0, -0.44 if current_index == 0 else -0.72)
+	fire_audio.stream = SwgAssetBridge.audio_for_role(role)
 
 func _fire() -> void:
 	var weapon := current_weapon()
