@@ -44,6 +44,9 @@ var active_vehicle: Node3D
 var vehicle_look_yaw := 0.0
 var physics_tick_count := 0
 var last_move_input := Vector2.ZERO
+var bob_time := 0.0
+var landing_kick := 0.0
+var was_grounded := false
 
 var stand_collision := CollisionShape3D.new()
 var crouch_collision := CollisionShape3D.new()
@@ -101,12 +104,13 @@ func _build_camera() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var mouse := event as InputEventMouseMotion
+		var look_sensitivity := mouse_sensitivity * (0.62 if weapons.is_aiming() else 1.0)
 		if active_vehicle != null and is_instance_valid(active_vehicle):
-			vehicle_look_yaw = clamp(vehicle_look_yaw - mouse.relative.x * mouse_sensitivity, deg_to_rad(-82.0), deg_to_rad(82.0))
+			vehicle_look_yaw = clamp(vehicle_look_yaw - mouse.relative.x * look_sensitivity, deg_to_rad(-82.0), deg_to_rad(82.0))
 			head.rotation.y = vehicle_look_yaw
 		else:
-			rotate_y(-mouse.relative.x * mouse_sensitivity)
-		pitch = clampf(pitch - mouse.relative.y * mouse_sensitivity, deg_to_rad(-88.0), deg_to_rad(88.0))
+			rotate_y(-mouse.relative.x * look_sensitivity)
+		pitch = clampf(pitch - mouse.relative.y * look_sensitivity, deg_to_rad(-88.0), deg_to_rad(88.0))
 		head.rotation.x = pitch
 	elif event.is_action_pressed("pause_mouse"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
@@ -181,8 +185,14 @@ func _physics_process(delta: float) -> void:
 			jump_buffer = 0.0
 			coyote_time = 0.0
 
+	var vertical_before_move := velocity.y
 	_try_step(delta)
 	move_and_slide()
+
+	var now_grounded := is_on_floor()
+	if now_grounded and not was_grounded and vertical_before_move < -4.0:
+		landing_kick = clampf(absf(vertical_before_move) * 0.012, 0.045, 0.14)
+	was_grounded = now_grounded
 
 	var target_head_height := 1.62
 	if stance == CROUCH:
@@ -190,9 +200,35 @@ func _physics_process(delta: float) -> void:
 	elif stance == PRONE:
 		target_head_height = 0.48
 	head.position.y = lerpf(head.position.y, target_head_height, 1.0 - exp(-delta * 14.0))
+	_update_camera_motion(delta, target_speed, sprinting)
 
 	if Input.is_action_just_pressed("interact"):
 		_try_interact()
+
+func _update_camera_motion(delta: float, target_speed: float, sprinting: bool) -> void:
+	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	var moving := is_on_floor() and planar_speed > 0.25 and stance != PRONE
+	if moving:
+		var speed_ratio := clampf(planar_speed / maxf(target_speed, 0.1), 0.0, 1.25)
+		var frequency := 11.5 if sprinting else (9.0 if stance == STAND else 7.0)
+		bob_time += delta * frequency * maxf(speed_ratio, 0.35)
+	else:
+		bob_time = lerpf(bob_time, 0.0, 1.0 - exp(-delta * 3.0))
+
+	var bob_strength := 1.0
+	if weapons.is_aiming():
+		bob_strength *= 0.35
+	if stance == CROUCH:
+		bob_strength *= 0.55
+	elif stance == PRONE:
+		bob_strength = 0.0
+
+	var bob_x := sin(bob_time) * 0.018 * bob_strength
+	var bob_y := absf(cos(bob_time * 2.0)) * 0.022 * bob_strength
+	landing_kick = lerpf(landing_kick, 0.0, 1.0 - exp(-delta * 13.0))
+	var target_camera_offset := Vector3(bob_x, bob_y - landing_kick, 0.0)
+	camera.position = camera.position.lerp(target_camera_offset, 1.0 - exp(-delta * 18.0))
+
 
 func _movement_input() -> Vector2:
 	var mapped := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
