@@ -202,9 +202,18 @@ func _spawn_speeder(spawn_map: Vector2) -> void:
 	speeder.rotation.y = PI
 
 func _respawn_player() -> void:
-	player.restore_full_health()
+	player.set_physics_process(false)
+	player.weapons.set_enabled(false)
 	player.velocity = Vector3.ZERO
+	if hud != null:
+		hud.show_redeploy()
+	await get_tree().create_timer(1.6).timeout
+	player.restore_full_health()
 	player.global_position = planet.surface_point(infantry_spawn_map.x, infantry_spawn_map.y) + Vector3.UP * 0.12
+	player.set_physics_process(true)
+	player.weapons.set_enabled(true)
+	if hud != null:
+		hud.hide_redeploy()
 	strategy.apply_local_result("rebel_outpost", "imperial", 4.0)
 	strategy.event_logged.emit("Redeployed at the forward staging point. Get back into the fight.")
 
