@@ -11,6 +11,7 @@ class USceneComponent;
 class UInputAction;
 class UInputMappingContext;
 class UFHBlasterComponent;
+class UFHHealthComponent;
 
 UCLASS()
 class FARHORIZON_API AFHPlayerCharacter : public ACharacter
@@ -24,6 +25,7 @@ public:
     virtual void PawnClientRestart() override;
 
 protected:
+    virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 private:
@@ -39,6 +41,9 @@ private:
     void StopAim();
     void Fire();
 
+    UFUNCTION()
+    void HandleDeath(AActor* DeadActor);
+
     UPROPERTY(VisibleAnywhere, Category="Camera")
     TObjectPtr<UCameraComponent> FirstPersonCamera;
 
@@ -53,6 +58,9 @@ private:
 
     UPROPERTY(VisibleAnywhere, Category="Weapon")
     TObjectPtr<UFHBlasterComponent> Blaster;
+
+    UPROPERTY(VisibleAnywhere, Category="Health")
+    TObjectPtr<UFHHealthComponent> Health;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputMappingContext> DefaultInputContext;
