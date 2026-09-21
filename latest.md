@@ -2,9 +2,9 @@
 
 Status: FAIL
 Branch: unreal/foundation-v0.1
-Commit: da1764122745c492f3d5a096eaa380143f7ab636
+Commit: 34307857d75b603bee992fca65a7127ca7822d9f
 UE: 5.8
-Tested: 2026-09-21T05:29:31.4863023Z
+Tested: 2026-09-21T05:30:15.8404464Z
 Failed stage: runner
 
 ## Steps
@@ -13,5 +13,5 @@ Failed stage: runner
 
 ## Diagnostics
 
-System.Management.Automation.RuntimeException: git reset --hard da1764122745c492f3d5a096eaa380143f7ab636 failed with exit code 128.
-fatal: Could not parse object 'da1764122745c492f3d5a096eaa380143f7ab636'.
+System.Management.Automation.RuntimeException: git reset --hard 34307857d75b603bee992fca65a7127ca7822d9f failed with exit code 128.
+fatal: Could not parse object '34307857d75b603bee992fca65a7127ca7822d9f'.
