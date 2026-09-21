@@ -4,6 +4,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Engine/DirectionalLight.h"
@@ -21,6 +22,9 @@ AFHFrontierWorld::AFHFrontierWorld()
     : RandomStream(1389)
 {
     PrimaryActorTick.bCanEverTick = false;
+
+    SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+    SetRootComponent(SceneRoot);
 
     CubeMesh = LoadObject<UStaticMesh>(
         nullptr,
