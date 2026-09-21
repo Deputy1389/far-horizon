@@ -68,12 +68,16 @@ if ($CleanImport) {
 $godot = Find-GodotExecutable
 Write-Host "Using Godot: $godot" -ForegroundColor DarkGray
 
-$arguments = @("--path", $Repo)
+$cacheDir = Join-Path $Repo ".godot"
+New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+$runtimeLog = Join-Path $cacheDir "foundation-runtime.log"
+$arguments = @("--path", $Repo, "--log-file", $runtimeLog)
 if ($Editor) {
     $arguments = @("--editor") + $arguments
     Write-Host "Opening Far Horizon editor..." -ForegroundColor Cyan
 } else {
     Write-Host "Launching Far Horizon Foundation v0.1..." -ForegroundColor Cyan
+    Write-Host "Runtime log: $runtimeLog" -ForegroundColor DarkGray
 }
 
 Start-Process -FilePath $godot -ArgumentList $arguments -WorkingDirectory $Repo
