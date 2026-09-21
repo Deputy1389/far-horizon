@@ -49,6 +49,7 @@ var right_hand_bone := -1
 var left_hand_bone := -1
 var weapon_mount := Node3D.new()
 var weapon_visual: Node3D
+var weapon_hardpoint: Node3D
 var walk_clip_speed := 0.0
 var run_clip_speed := 0.0
 var fire_audio := AudioStreamPlayer3D.new()
@@ -107,6 +108,7 @@ func _build_visual() -> void:
 			character_skeleton = skeletons[0] as Skeleton3D
 			right_hand_bone = _find_bone(character_skeleton, ["rwrist", "r_wrist", "rhand", "r_hand"])
 			left_hand_bone = _find_bone(character_skeleton, ["lwrist", "l_wrist", "lhand", "l_hand"])
+		weapon_hardpoint = _find_weapon_hardpoint(imported)
 	else:
 		var mesh_instance := MeshInstance3D.new()
 		var capsule := CapsuleMesh.new()
@@ -120,17 +122,42 @@ func _build_visual() -> void:
 		mesh_instance.material_override = material
 		visual_root.add_child(mesh_instance)
 
-	weapon_visual = SwgAssetBridge.instantiate_weapon("blasterRifle")
+	weapon_visual = SwgAssetBridge.instantiate_weapon("blasterRifle", weapon_hardpoint == null)
 	if weapon_visual != null:
 		weapon_mount.add_child(weapon_visual)
-		# The imported rifle is already normalized to a useful world-space
-		# length. Its center sits ahead of the right wrist so the support hand
-		# naturally lands around the foregrip when the SWG rifle poses play.
-		weapon_visual.position = Vector3(0.0, -0.025, -0.18)
+		if weapon_hardpoint != null:
+			# Exact SWG skeletal hardpoint: keep the weapon at its authored
+			# attachment origin/orientation.
+			weapon_visual.position = Vector3.ZERO
+		else:
+			# Fallback for older cached character conversions without HPTS.
+			weapon_visual.position = Vector3(0.0, -0.025, -0.18)
 
 	muzzle.position = Vector3(0.23, 1.32, -0.62)
 	add_child(muzzle)
 	_update_weapon_mount()
+
+
+func _find_weapon_hardpoint(root: Node3D) -> Node3D:
+	var exact_names := [
+		"hp_weapon_right",
+		"hp_hold_r",
+		"hold_r",
+		"weapon_right",
+		"hp_r_hand",
+	]
+	for name_value in exact_names:
+		var node := root.find_child(name_value, true, false)
+		if node is Node3D:
+			return node as Node3D
+
+	for node in root.find_children("*", "Node3D", true, false):
+		if not node is Node3D:
+			continue
+		var lowered := String(node.name).to_lower()
+		if "weapon" in lowered and ("right" in lowered or "_r" in lowered):
+			return node as Node3D
+	return null
 
 
 func _find_bone(skeleton: Skeleton3D, candidates: Array[String]) -> int:
@@ -158,7 +185,13 @@ func _update_weapon_mount() -> void:
 	if weapon_visual == null or not is_instance_valid(weapon_visual):
 		return
 
-	if character_skeleton != null and right_hand_bone >= 0:
+	if weapon_hardpoint != null and is_instance_valid(weapon_hardpoint):
+		var hardpoint_transform := weapon_hardpoint.global_transform
+		weapon_mount.global_transform = Transform3D(
+			hardpoint_transform.basis.orthonormalized(),
+			hardpoint_transform.origin
+		)
+	elif character_skeleton != null and right_hand_bone >= 0:
 		var right_transform := _bone_world_transform(right_hand_bone)
 		var right_position := right_transform.origin
 		var mount_basis := right_transform.basis.orthonormalized()
@@ -167,9 +200,9 @@ func _update_weapon_mount() -> void:
 			var left_position := _bone_world_transform(left_hand_bone).origin
 			var hand_direction := left_position - right_position
 			if hand_direction.length_squared() > 0.01:
-				# The rifle-ready clips place the support hand forward on the
-				# weapon. Point the weapon mount from the trigger hand through
-				# the support hand instead of guessing the wrist's local axes.
+				# Fallback attachment: infer rifle direction from the animated
+				# trigger/support hands so the gun at least travels with the
+				# pose instead of floating independently of it.
 				weapon_mount.global_position = right_position
 				weapon_mount.look_at(left_position, Vector3.UP)
 			else:
@@ -177,12 +210,9 @@ func _update_weapon_mount() -> void:
 		else:
 			weapon_mount.global_transform = Transform3D(mount_basis, right_position)
 	else:
-		# Static fallback for a non-rigged character asset.
 		weapon_mount.position = Vector3(0.22, 1.22, -0.30)
 		weapon_mount.rotation = Vector3(deg_to_rad(-8.0), 0.0, 0.0)
 
-	# Keep projectile FX visually attached to the rifle instead of hovering at
-	# a fixed chest-space point while the animation moves the hands.
 	var barrel_forward := -weapon_mount.global_basis.z.normalized()
 	muzzle.global_position = weapon_mount.global_position + barrel_forward * 0.64
 	muzzle.global_basis = weapon_mount.global_basis.orthonormalized()
