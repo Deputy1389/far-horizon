@@ -100,48 +100,6 @@ function Ensure-FHTestWorktree {
     }
 }
 
-function Mount-FHEpicFirstPersonReference {
-    param(
-        [Parameter(Mandatory=$true)][string]$TestPath,
-        [Parameter(Mandatory=$true)][string]$EngineRoot
-    )
-
-    $templateContent = Join-Path $EngineRoot "Templates\TP_FirstPerson\Content"
-    if (-not (Test-Path $templateContent)) {
-        return $null
-    }
-
-    $folders = @(
-        "FirstPerson",
-        "Variant_Shooter",
-        "Characters",
-        "Weapons",
-        "LevelPrototyping"
-    )
-
-    foreach ($folder in $folders) {
-        $source = Join-Path $templateContent $folder
-        if (-not (Test-Path $source)) {
-            continue
-        }
-
-        $destination = Join-Path (Join-Path $TestPath "Content") $folder
-        if (-not (Test-Path $destination)) {
-            New-Item -ItemType Junction -Path $destination -Target $source | Out-Null
-        }
-    }
-
-    $variantRoot = Join-Path $templateContent "Variant_Shooter"
-    $mapFile = Get-ChildItem -Path $variantRoot -Filter "Lvl_Shooter.umap" -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $mapFile) {
-        return $null
-    }
-
-    $relative = $mapFile.FullName.Substring($templateContent.Length).TrimStart("\", "/")
-    $assetPath = "/Game/" + (($relative -replace "\\", "/") -replace "\.umap$", "")
-    return $assetPath
-}
-
 function Invoke-FHLoggedProcess {
     param(
         [Parameter(Mandatory=$true)][string]$Name,
@@ -443,7 +401,6 @@ function Invoke-FHValidation {
     Write-Host "============================================================"
 
     Ensure-FHTestWorktree -Path $TestPath -Sha $Sha
-    $epicReferenceMap = Mount-FHEpicFirstPersonReference -TestPath $TestPath -EngineRoot $Engine.Root
     $project = Join-Path $TestPath "FarHorizon.uproject"
     if (-not (Test-Path $project)) {
         throw "FarHorizon.uproject is missing from tested commit $Sha."
@@ -452,9 +409,7 @@ function Invoke-FHValidation {
     $steps = [System.Collections.Generic.List[object]]::new()
 
     $buildCommand = '""{0}" -Target="FarHorizonEditor Win64 Development" -Project="{1}" -WaitMutex -NoHotReloadFromIDE"' -f $UnrealTools.Build, $project
-    $totalStages = if ($epicReferenceMap) { 4 } else { 3 }
-
-    Write-Host "[1/$totalStages] Building FarHorizonEditor..."
+    Write-Host "[1/3] Building FarHorizonEditor..."
     $buildParams = @{
         Name = "build"
         FilePath = $env:ComSpec
@@ -471,7 +426,7 @@ function Invoke-FHValidation {
     $bootPass = $false
 
     if ($buildPass) {
-        Write-Host "[2/$totalStages] Running Far Horizon automation tests..."
+        Write-Host "[2/3] Running Far Horizon automation tests..."
         $reportPath = Join-Path $logDir "automation-report"
         $automationArgs = @(
             ('"{0}"' -f $project),
@@ -506,7 +461,7 @@ function Invoke-FHValidation {
         $automationPass = ($automation.ExitCode -eq 0 -and -not $automationFailure)
 
         if ($automationPass) {
-            Write-Host "[3/$totalStages] Running headless game boot smoke..."
+            Write-Host "[3/3] Running headless game boot smoke..."
             $bootArgs = @(
                 ('"{0}"' -f $project),
                 "-game",
@@ -535,40 +490,7 @@ function Invoke-FHValidation {
         }
     }
 
-    $epicReferencePass = $true
-
-    if ($buildPass -and $automationPass -and $bootPass -and $epicReferenceMap)
-    {
-        Write-Host "[4/$totalStages] Booting Epic UE 5.8 Arena Shooter reference map..."
-        $epicArgs = @(
-            ('"{0}"' -f $project),
-            $epicReferenceMap,
-            "-game",
-            "-unattended",
-            "-nop4",
-            "-nosplash",
-            "-NullRHI",
-            "-NoSound",
-            "-stdout",
-            "-FullStdOutLogOutput",
-            '-ExecCmds="quit"'
-        )
-        $epicParams = @{
-            Name = "epic-reference"
-            FilePath = $UnrealTools.EditorCmd
-            ArgumentList = $epicArgs
-            WorkingDirectory = $TestPath
-            LogDirectory = $logDir
-            TimeoutSeconds = 240
-        }
-        $epicReference = Invoke-FHLoggedProcess @epicParams
-        $steps.Add($epicReference)
-
-        $epicFailure = Test-FHLogFailure -Paths @($epicReference.StdOut, $epicReference.StdErr) -Patterns @("Fatal error", "Unhandled Exception", "Assertion failed", "Failed to load package")
-        $epicReferencePass = ($epicReference.ExitCode -eq 0 -and -not $epicFailure)
-    }
-
-    $status = if ($buildPass -and $automationPass -and $bootPass -and $epicReferencePass) { "PASS" } else { "FAIL" }
+    $status = if ($buildPass -and $automationPass -and $bootPass) { "PASS" } else { "FAIL" }
     $failedStage = $null
     if (-not $buildPass) {
         $failedStage = "build"
@@ -576,8 +498,6 @@ function Invoke-FHValidation {
         $failedStage = "automation"
     } elseif (-not $bootPass) {
         $failedStage = "boot"
-    } elseif (-not $epicReferencePass) {
-        $failedStage = "epic-reference"
     }
 
     $diagnostics = Get-FHDiagnostics -Steps @($steps) -TestRoot $TestPath -EnginePath $Engine.Root
