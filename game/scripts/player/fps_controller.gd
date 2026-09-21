@@ -47,6 +47,10 @@ var last_move_input := Vector2.ZERO
 var bob_time := 0.0
 var landing_kick := 0.0
 var was_grounded := false
+var footstep_distance := 0.0
+var footstep_index := 0
+var footstep_audio := AudioStreamPlayer.new()
+var footstep_streams: Array[AudioStream] = []
 
 var stand_collision := CollisionShape3D.new()
 var crouch_collision := CollisionShape3D.new()
@@ -67,6 +71,12 @@ func _ready() -> void:
 	_build_camera()
 	weapons.configure(camera, self)
 	add_child(weapons)
+	add_child(footstep_audio)
+	footstep_audio.volume_db = -9.0
+	for index in range(1, 5):
+		var stream := SwgAssetBridge.audio_for_role("footstepSand%d" % index)
+		if stream != null:
+			footstep_streams.append(stream)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	health_changed.emit(health, maximum_health)
 
@@ -201,6 +211,7 @@ func _physics_process(delta: float) -> void:
 		target_head_height = 0.48
 	head.position.y = lerpf(head.position.y, target_head_height, 1.0 - exp(-delta * 14.0))
 	_update_camera_motion(delta, target_speed, sprinting)
+	_update_footsteps(delta, sprinting)
 
 	if Input.is_action_just_pressed("interact"):
 		_try_interact()
@@ -228,6 +239,30 @@ func _update_camera_motion(delta: float, target_speed: float, sprinting: bool) -
 	landing_kick = lerpf(landing_kick, 0.0, 1.0 - exp(-delta * 13.0))
 	var target_camera_offset := Vector3(bob_x, bob_y - landing_kick, 0.0)
 	camera.position = camera.position.lerp(target_camera_offset, 1.0 - exp(-delta * 18.0))
+
+
+func _update_footsteps(delta: float, sprinting: bool) -> void:
+	if footstep_streams.is_empty() or not is_on_floor() or stance == PRONE:
+		footstep_distance = 0.0
+		return
+	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	if planar_speed < 0.35:
+		footstep_distance = 0.0
+		return
+	footstep_distance += planar_speed * delta
+	var stride := 1.75
+	if sprinting:
+		stride = 2.05
+	elif stance == CROUCH:
+		stride = 1.35
+	if footstep_distance < stride:
+		return
+	footstep_distance = fmod(footstep_distance, stride)
+	footstep_index = (footstep_index + 1) % footstep_streams.size()
+	footstep_audio.stream = footstep_streams[footstep_index]
+	footstep_audio.pitch_scale = 1.06 if sprinting else (0.92 if stance == CROUCH else 1.0)
+	footstep_audio.volume_db = -5.5 if sprinting else (-12.0 if stance == CROUCH else -8.5)
+	footstep_audio.play()
 
 
 func _movement_input() -> Vector2:
