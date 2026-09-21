@@ -27,6 +27,8 @@ var controls_label := Label.new()
 var capture_ratio := 0.0
 var capture_contested := false
 var objective_captured := false
+var scoped_aim := false
+var redeploy_visible := false
 
 func configure(player_ref: FPSController, origin_ref: FloatingOrigin, strategy_ref: StrategicSim) -> void:
 	player = player_ref
@@ -38,6 +40,7 @@ func configure(player_ref: FPSController, origin_ref: FloatingOrigin, strategy_r
 	player.weapons.weapon_changed.connect(_on_weapon_changed)
 	player.weapons.hit_confirmed.connect(_on_hit_confirmed)
 	player.weapons.heat_changed.connect(_on_heat_changed)
+	player.weapons.aiming_changed.connect(_on_aiming_changed)
 	strategy.event_logged.connect(_on_event)
 	_on_health_changed(player.health, player.maximum_health)
 	_on_weapon_changed(player.weapons.current_weapon().display_name)
@@ -152,6 +155,9 @@ func _process(delta: float) -> void:
 	kill_marker_timer = maxf(0.0, kill_marker_timer - delta)
 	damage_flash_timer = maxf(0.0, damage_flash_timer - delta)
 
+	if not redeploy_visible:
+		crosshair.visible = not scoped_aim
+
 	if kill_marker_timer > 0.0:
 		crosshair.text = "✕"
 		crosshair.modulate = Color(1.0, 0.25, 0.12)
@@ -213,14 +219,16 @@ func _update_interaction_prompt() -> void:
 	interaction_label.text = prompt
 
 func show_redeploy() -> void:
+	redeploy_visible = true
 	redeploy_overlay.visible = true
 	redeploy_label.visible = true
 	crosshair.visible = false
 
 func hide_redeploy() -> void:
+	redeploy_visible = false
 	redeploy_overlay.visible = false
 	redeploy_label.visible = false
-	crosshair.visible = true
+	crosshair.visible = not scoped_aim
 
 
 func confirm_kill() -> void:
@@ -242,6 +250,12 @@ func _on_health_changed(current: float, maximum: float) -> void:
 
 func _on_weapon_changed(display_name: String) -> void:
 	weapon_label.text = display_name.to_upper()
+
+func _on_aiming_changed(value: bool, scoped: bool) -> void:
+	scoped_aim = value and scoped
+	if not redeploy_visible:
+		crosshair.visible = not scoped_aim
+
 
 func _on_heat_changed(value: float, overheated: bool) -> void:
 	var bars := int(round(clampf(value, 0.0, 1.0) * 10.0))
