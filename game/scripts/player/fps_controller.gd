@@ -42,6 +42,8 @@ var mantle_start := Vector3.ZERO
 var mantle_end := Vector3.ZERO
 var active_vehicle: Node3D
 var vehicle_look_yaw := 0.0
+var physics_tick_count := 0
+var last_move_input := Vector2.ZERO
 
 var stand_collision := CollisionShape3D.new()
 var crouch_collision := CollisionShape3D.new()
@@ -110,6 +112,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
 
 func _physics_process(delta: float) -> void:
+	physics_tick_count += 1
 	jump_cooldown = maxf(0.0, jump_cooldown - delta)
 	jump_buffer = maxf(0.0, jump_buffer - delta)
 	_update_health_regen(delta)
@@ -135,7 +138,8 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("prone"):
 		_request_stance(STAND if stance == PRONE else PRONE)
 
-	var input_vector := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input_vector := _movement_input()
+	last_move_input = input_vector
 	var wish_direction := (global_basis * Vector3(input_vector.x, 0.0, input_vector.y))
 	wish_direction.y = 0.0
 	wish_direction = wish_direction.normalized()
@@ -189,6 +193,25 @@ func _physics_process(delta: float) -> void:
 
 	if Input.is_action_just_pressed("interact"):
 		_try_interact()
+
+func _movement_input() -> Vector2:
+	var mapped := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	# Physical-key fallback keeps the FPS controllable even if a platform/import
+	# pass fails to populate the runtime InputMap exactly as expected.
+	var x := mapped.x
+	var y := mapped.y
+	if Input.is_physical_key_pressed(KEY_A):
+		x -= 1.0
+	if Input.is_physical_key_pressed(KEY_D):
+		x += 1.0
+	if Input.is_physical_key_pressed(KEY_W):
+		y -= 1.0
+	if Input.is_physical_key_pressed(KEY_S):
+		y += 1.0
+	var combined := Vector2(x, y)
+	if combined.length() > 1.0:
+		combined = combined.normalized()
+	return combined
 
 func _stance_speed(sprinting: bool) -> float:
 	if stance == PRONE:
