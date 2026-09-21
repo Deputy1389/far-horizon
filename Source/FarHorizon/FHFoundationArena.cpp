@@ -3,9 +3,13 @@
 #include "FHEnemyCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkyAtmosphereComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/SkyAtmosphere.h"
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
@@ -31,15 +35,39 @@ void AFHFoundationArena::BeginPlay()
         return;
     }
 
-    // 50m x 50m floor, with enough cover to immediately exercise lateral AI.
-    SpawnBox(FVector(0.0, 0.0, -50.0), FVector(50.0, 50.0, 1.0));
+    // Deliberately readable greybox combat space: a central lane, broken cover,
+    // flanking routes and elevated silhouettes. This remains a systems harness,
+    // but it should feel like a place rather than an empty light-test box.
+    SpawnBox(FVector(0.0, 0.0, -50.0), FVector(55.0, 45.0, 1.0));
 
-    SpawnBox(FVector(350.0, 500.0, 100.0), FVector(2.0, 0.8, 2.0));
-    SpawnBox(FVector(350.0, -500.0, 100.0), FVector(2.0, 0.8, 2.0));
-    SpawnBox(FVector(950.0, 150.0, 75.0), FVector(1.2, 2.4, 1.5));
-    SpawnBox(FVector(1450.0, -450.0, 125.0), FVector(2.5, 0.8, 2.5));
-    SpawnBox(FVector(-450.0, 800.0, 100.0), FVector(0.8, 2.5, 2.0));
-    SpawnBox(FVector(-650.0, -650.0, 125.0), FVector(2.2, 0.8, 2.5));
+    // Outer perimeter / skyline breaks.
+    SpawnBox(FVector(0.0, 4300.0, 350.0), FVector(55.0, 2.0, 8.0));
+    SpawnBox(FVector(0.0, -4300.0, 350.0), FVector(55.0, 2.0, 8.0));
+    SpawnBox(FVector(5200.0, 0.0, 350.0), FVector(2.0, 45.0, 8.0));
+    SpawnBox(FVector(-5200.0, 0.0, 350.0), FVector(2.0, 45.0, 8.0));
+
+    // Near cover.
+    SpawnBox(FVector(-700.0, 520.0, 90.0), FVector(1.8, 0.7, 1.8));
+    SpawnBox(FVector(-450.0, -650.0, 120.0), FVector(0.7, 2.4, 2.4));
+    SpawnBox(FVector(100.0, 850.0, 140.0), FVector(2.6, 0.8, 2.8));
+    SpawnBox(FVector(300.0, -950.0, 100.0), FVector(2.0, 0.7, 2.0));
+
+    // Mid-field fighting positions.
+    SpawnBox(FVector(900.0, 180.0, 85.0), FVector(1.1, 2.8, 1.7));
+    SpawnBox(FVector(1350.0, 700.0, 125.0), FVector(2.6, 0.75, 2.5));
+    SpawnBox(FVector(1500.0, -700.0, 125.0), FVector(2.6, 0.75, 2.5));
+    SpawnBox(FVector(2050.0, 0.0, 60.0), FVector(1.3, 3.6, 1.2));
+
+    // Raised flank platforms and crude ramps.
+    SpawnBox(FVector(400.0, 1900.0, 190.0), FVector(4.0, 5.0, 0.5));
+    SpawnBox(FVector(400.0, 1450.0, 90.0), FVector(4.0, 2.4, 0.35), FRotator(18.0, 0.0, 0.0));
+    SpawnBox(FVector(1000.0, -1900.0, 220.0), FVector(4.5, 4.0, 0.5));
+    SpawnBox(FVector(650.0, -1500.0, 105.0), FVector(3.5, 2.2, 0.35), FRotator(-18.0, 0.0, 0.0));
+
+    // Distant vertical landmarks so orientation is immediate.
+    SpawnBox(FVector(3000.0, 1800.0, 700.0), FVector(3.5, 3.5, 14.0));
+    SpawnBox(FVector(3300.0, -1700.0, 500.0), FVector(2.5, 2.5, 10.0));
+    SpawnBox(FVector(-2600.0, 2100.0, 600.0), FVector(3.0, 3.0, 12.0));
 
     SpawnLighting();
     SpawnNavigationBounds();
@@ -72,7 +100,7 @@ void AFHFoundationArena::SpawnBox(
     }
 
     UStaticMeshComponent* Mesh = Box->GetStaticMeshComponent();
-    Mesh->SetMobility(EComponentMobility::Static);
+    Mesh->SetMobility(EComponentMobility::Movable);
     Mesh->SetStaticMesh(CubeMesh);
     Mesh->SetCollisionProfileName(TEXT("BlockAll"));
     Mesh->SetCanEverAffectNavigation(true);
@@ -88,20 +116,42 @@ void AFHFoundationArena::SpawnLighting()
         return;
     }
 
+    ASkyAtmosphere* Atmosphere = World->SpawnActor<ASkyAtmosphere>();
+    if (Atmosphere && Atmosphere->GetComponent())
+    {
+        Atmosphere->GetComponent()->SetMobility(EComponentMobility::Movable);
+    }
+
     ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
         FVector::ZeroVector,
-        FRotator(-48.0f, -35.0f, 0.0f));
+        FRotator(-34.0f, -42.0f, 0.0f));
 
     if (Sun && Sun->GetLightComponent())
     {
-        Sun->GetLightComponent()->SetIntensity(6.0f);
-        Sun->GetLightComponent()->SetLightColor(FLinearColor(1.0f, 0.92f, 0.78f));
+        Sun->GetLightComponent()->SetMobility(EComponentMobility::Movable);
+        Sun->GetLightComponent()->SetIntensity(7.5f);
+        Sun->GetLightComponent()->SetLightColor(FLinearColor(1.0f, 0.82f, 0.62f));
+        Sun->GetLightComponent()->SetAtmosphereSunLight(true);
+        Sun->GetLightComponent()->SetAtmosphereSunLightIndex(0);
+        Sun->GetLightComponent()->SetDynamicShadowDistanceMovableLight(12000.0f);
     }
 
     ASkyLight* Sky = World->SpawnActor<ASkyLight>();
     if (Sky && Sky->GetLightComponent())
     {
-        Sky->GetLightComponent()->SetIntensity(0.65f);
+        Sky->GetLightComponent()->SetMobility(EComponentMobility::Movable);
+        Sky->GetLightComponent()->SetIntensity(0.9f);
+        Sky->GetLightComponent()->SetRealTimeCaptureEnabled(true);
+    }
+
+    AExponentialHeightFog* Fog = World->SpawnActor<AExponentialHeightFog>();
+    if (Fog && Fog->GetComponent())
+    {
+        Fog->GetComponent()->SetMobility(EComponentMobility::Movable);
+        Fog->GetComponent()->SetFogDensity(0.006f);
+        Fog->GetComponent()->SetFogHeightFalloff(0.18f);
+        Fog->GetComponent()->SetStartDistance(1200.0f);
+        Fog->GetComponent()->SetVolumetricFog(true);
     }
 }
 
