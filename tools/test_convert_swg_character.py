@@ -155,23 +155,32 @@ class SkinnedCharacterConverterTests(unittest.TestCase):
 
         self.assertEqual(choose_character_skeletal_mesh([older, newer]), newer)
 
-    def test_prefers_rifle_ready_character_clips_for_weapon_pose_and_fire(self) -> None:
+    def test_prefers_directional_rifle_character_clips(self) -> None:
         specs = {
             name: (preferred_paths, fallback_terms)
             for name, preferred_paths, fallback_terms in character_animation_specs()
         }
         self.assertEqual(
-            specs["walk"][0][0],
-            "appearance/animation/all_b_cbt_rifle_walk_ready.ans",
+            specs["walk_forward"][0][0],
+            "appearance/animation/all_b_cbt_rifle_walk_aimed.ans",
+        )
+        self.assertEqual(
+            specs["walk_back"][0][0],
+            "appearance/animation/all_b_cbt_rifle_a_walk_backwards_aimed.ans",
+        )
+        self.assertEqual(
+            specs["strafe_left"][0][0],
+            "appearance/animation/all_b_cbt_rifle_a_walk_sidestepl_aimed.ans",
+        )
+        self.assertEqual(
+            specs["strafe_right"][0][0],
+            "appearance/animation/all_b_cbt_rifle_a_walk_sidestepr_aimed.ans",
         )
         self.assertEqual(
             specs["fire"][0][0],
-            "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front_left.ans",
+            "appearance/animation/all_b_cbt_rifle_standing_aimed_fire_1_front.ans",
         )
-        self.assertEqual(
-            specs["death"][0][0],
-            "appearance/animation/all_b_npc_death_pose_2.ans",
-        )
+        self.assertNotIn("death", specs)
         self.assertIn("rifle", specs["fire"][1])
 
 
