@@ -239,6 +239,26 @@ unreal.log("FH_SWG_UNREAL_TEXTURES_READY roles=%d" % len(role_to_texture))
 # --- Real SWG converted geometry/rig ---
 model_results = {}
 
+proof = manifest.get("meshProof") or {}
+proof_file = local_file(proof.get("url") or "")
+if proof_file:
+    try:
+        paths = import_one(
+            proof_file,
+            "/Game/FarHorizon/LocalSWG/Import/MeshProof",
+            "SWG_MeshProof_Source",
+        )
+        canonical = canonical_copy(
+            paths,
+            "StaticMesh",
+            "/Game/FarHorizon/LocalSWG/Models/SM_SWG_MoistureVaporator",
+        )
+        if canonical:
+            model_results["meshProof"] = canonical
+            unreal.log("FH_SWG_MOISTURE_VAPORATOR_READY %s" % canonical)
+    except Exception as exc:
+        unreal.log_warning("SWG mesh proof import failed: %s" % exc)
+
 weapon = (manifest.get("weapons") or {}).get("blasterRifle") or {}
 weapon_file = local_file(weapon.get("url") or "")
 if weapon_file:
