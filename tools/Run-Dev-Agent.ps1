@@ -49,7 +49,7 @@ function Get-FHRemoteSha {
         throw "Remote branch '$Remote/$Branch' was not found."
     }
 
-    $parts = $line -split '\\s+'
+    $parts = $line -split '\s+'
     return $parts[0]
 }
 
@@ -449,7 +449,6 @@ function Invoke-FHValidation {
         sha = $Sha
         shortSha = $shortSha
         testedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
-        machine = $env:COMPUTERNAME
         engineVersion = $Engine.Version
         failedStage = $failedStage
         steps = $stepSummary
@@ -526,7 +525,25 @@ while ($true) {
                 Engine = $engine
                 UnrealTools = $unrealTools
             }
-            $result = Invoke-FHValidation @validationParams
+            try {
+                $result = Invoke-FHValidation @validationParams
+            } catch {
+                $shortSha = $sha.Substring(0, [Math]::Min(12, $sha.Length))
+                $safeException = ConvertTo-FHSafeText -Text ([string]$_.Exception.ToString()) -TestRoot $testPath -EnginePath $engine.Root
+                $result = @{
+                    status = "FAIL"
+                    branch = $Branch
+                    sha = $sha
+                    shortSha = $shortSha
+                    testedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
+                    engineVersion = $engine.Version
+                    failedStage = "runner"
+                    steps = @()
+                    diagnostics = $safeException
+                    localLogDirectory = $logsRoot
+                }
+            }
+
             $status = [string]$result.status
             $failedStageText = if ($result.failedStage) { " ($($result.failedStage))" } else { "" }
 
@@ -566,7 +583,6 @@ $($result.diagnostics)
                         sha = $result.sha
                         shortSha = $result.shortSha
                         testedAtUtc = $result.testedAtUtc
-                        machine = $result.machine
                         engineVersion = $result.engineVersion
                         failedStage = $result.failedStage
                         steps = $result.steps
