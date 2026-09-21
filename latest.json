@@ -1,7 +1,7 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
     "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFrontierWorld.cpp(120,47): error C2445: result type of conditional expression is ambiguous: types \u0027UStaticMesh *\u0027 and \u0027TObjectPtr\u003cUStaticMesh\u003e\u0027 can be converted to multiple common types\r\n\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\FHFrontierWorld.cpp(118,9): error C2064: term does not evaluate to a function taking 3 arguments",
-    "sha":  "e45653af9a2658dc0229526bcd40d99cc62859d3",
+    "sha":  "a4528aa1ceb7989ba33cdcf5094dde88cbcd4578",
     "failedStage":  "build",
     "engineVersion":  "5.8",
     "epicTemplate":  {
@@ -69,15 +69,15 @@
                                     ],
                          "available":  true
                      },
-    "shortSha":  "e45653af9a26",
+    "shortSha":  "a4528aa1ceb7",
     "status":  "FAIL",
     "steps":  [
                   {
                       "exitCode":  0,
                       "name":  "build",
-                      "durationSeconds":  20.6,
+                      "durationSeconds":  13.8,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T08:01:24.2519347Z"
+    "testedAtUtc":  "2026-09-21T08:02:05.4286981Z"
 }
