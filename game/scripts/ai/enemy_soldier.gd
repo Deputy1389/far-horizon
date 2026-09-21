@@ -30,6 +30,9 @@ var combat_move_mode := 0
 var strafe_sign := 1.0
 var burst_remaining := 0
 var cover_target := Vector3.ZERO
+var reaction_timer := 0.0
+var lost_sight_timer := 0.0
+var last_seen_position := Vector3.ZERO
 
 var visual_root := Node3D.new()
 var muzzle := Marker3D.new()
@@ -143,6 +146,7 @@ func _physics_process(delta: float) -> void:
 
 	fire_cooldown = maxf(0.0, fire_cooldown - delta)
 	hit_stun = maxf(0.0, hit_stun - delta)
+	reaction_timer = maxf(0.0, reaction_timer - delta)
 	perception_timer -= delta
 	repath_timer -= delta
 
@@ -175,7 +179,11 @@ func _update_perception() -> void:
 	if distance > 13.0 and forward.dot(to_player.normalized()) < -0.2:
 		return
 	if _has_line_of_sight(player):
+		if target == null or not is_instance_valid(target):
+			reaction_timer = rng.randf_range(0.28, 0.52)
 		target = player
+		last_seen_position = player.global_position
+		lost_sight_timer = 0.0
 		squad_manager.alert_squad(squad_id, player)
 
 func _has_line_of_sight(candidate: Node3D) -> bool:
@@ -195,58 +203,106 @@ func _combat_update(delta: float) -> void:
 	var distance: float = maxf(offset.length(), 0.001)
 	var away := offset / distance
 	var side := Vector3.UP.cross(away).normalized()
+	var has_los := _has_line_of_sight(target)
+
+	if has_los:
+		last_seen_position = target_position
+		lost_sight_timer = 0.0
+	else:
+		lost_sight_timer += delta
 
 	combat_action_timer -= delta
 	if combat_action_timer <= 0.0:
-		combat_action_timer = rng.randf_range(0.75, 1.6)
-		if health < maximum_health * 0.48 and rng.randf() < 0.55:
+		combat_action_timer = rng.randf_range(0.95, 1.75)
+		strafe_sign = -1.0 if rng.randf() < 0.5 else 1.0
+		if not has_los:
+			combat_move_mode = 5
+		elif distance < 10.5:
+			combat_move_mode = 6
+		elif health < maximum_health * 0.52 and rng.randf() < 0.62:
 			cover_target = _find_cover_target()
-			combat_move_mode = 4 if cover_target != Vector3.ZERO else rng.randi_range(0, 3)
-		elif distance > preferred_distance + 12.0:
+			combat_move_mode = 4 if cover_target != Vector3.ZERO else 1
+		elif distance > preferred_distance + 13.0:
 			combat_move_mode = 3
 		else:
-			combat_move_mode = rng.randi_range(0, 3)
-		strafe_sign = -1.0 if rng.randf() < 0.5 else 1.0
+			var choice := rng.randf()
+			if choice < 0.34:
+				combat_move_mode = 0
+			elif choice < 0.72:
+				combat_move_mode = 1
+			elif choice < 0.90:
+				combat_move_mode = 2
+			else:
+				cover_target = _find_cover_target()
+				combat_move_mode = 4 if cover_target != Vector3.ZERO else 0
+
+	# Once a burst starts, commit to the shot sequence instead of sprinting while
+	# firing. This alone makes the enemy read much more like a shooter opponent.
+	if burst_remaining > 0 and has_los:
+		combat_move_mode = 0
 
 	var desired := global_position
 	match combat_move_mode:
 		0:
 			desired = global_position
 		1:
-			desired = global_position + side * 7.5 * strafe_sign
+			desired = global_position + side * 6.0 * strafe_sign
 		2:
-			desired = target_position + away * (preferred_distance + rng.randf_range(-3.0, 4.0)) + side * 5.0 * strafe_sign
+			desired = target_position + away * (preferred_distance + rng.randf_range(-2.0, 3.5)) + side * 4.5 * strafe_sign
 		3:
-			desired = target_position + away * maxf(11.0, preferred_distance - 5.0)
-		_:
+			desired = target_position + away * maxf(15.0, preferred_distance - 3.0) + side * 2.5 * strafe_sign
+		4:
 			desired = cover_target
+		5:
+			desired = last_seen_position + side * 5.5 * strafe_sign
+		6:
+			desired = global_position + away * 8.0 + side * 3.0 * strafe_sign
 
-	if squad_role == "flank_left":
-		desired += side * 8.0
-	elif squad_role == "flank_right":
-		desired -= side * 8.0
-	elif squad_role == "suppress":
-		desired = target_position + away * (preferred_distance + 6.0)
+	if squad_role == "flank_left" and combat_move_mode not in [4, 5, 6]:
+		desired += side * 5.0
+	elif squad_role == "flank_right" and combat_move_mode not in [4, 5, 6]:
+		desired -= side * 5.0
+	elif squad_role == "suppress" and combat_move_mode == 2:
+		desired = target_position + away * (preferred_distance + 7.0)
 
 	var move_direction := desired - global_position
 	move_direction.y = 0.0
-	if move_direction.length() > 1.4:
+	var wants_to_move := move_direction.length() > 1.25 and burst_remaining <= 0
+	if wants_to_move:
 		move_direction = _avoid_obstacle(move_direction.normalized())
-		var combat_speed := move_speed * (1.12 if distance > preferred_distance + 10.0 else 0.82)
-		velocity.x = move_toward(velocity.x, move_direction.x * combat_speed, move_speed * 7.0 * delta)
-		velocity.z = move_toward(velocity.z, move_direction.z * combat_speed, move_speed * 7.0 * delta)
+		var combat_speed := move_speed * 0.82
+		if combat_move_mode in [3, 5]:
+			combat_speed = move_speed
+		elif combat_move_mode == 6:
+			combat_speed = move_speed * 0.9
+		velocity.x = move_toward(velocity.x, move_direction.x * combat_speed, move_speed * 6.5 * delta)
+		velocity.z = move_toward(velocity.z, move_direction.z * combat_speed, move_speed * 6.5 * delta)
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, move_speed * 9.0 * delta)
-		velocity.z = move_toward(velocity.z, 0.0, move_speed * 9.0 * delta)
+		velocity.x = move_toward(velocity.x, 0.0, move_speed * 10.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, move_speed * 10.0 * delta)
 
-	var face := target_position - global_position
+	var face_position := target_position if has_los else last_seen_position
+	var face := face_position - global_position
 	face.y = 0.0
 	if face.length_squared() > 0.1:
 		var desired_yaw := atan2(-face.x, -face.z)
-		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 10.0))
+		rotation.y = lerp_angle(rotation.y, desired_yaw, 1.0 - exp(-delta * 9.0))
 
-	if distance < engage_distance and fire_cooldown <= 0.0 and _has_line_of_sight(target):
+	var planar_speed := Vector2(velocity.x, velocity.z).length()
+	if (
+		has_los
+		and reaction_timer <= 0.0
+		and distance < engage_distance
+		and distance > 5.0
+		and planar_speed < 1.6
+		and fire_cooldown <= 0.0
+	):
 		_fire_at_target(distance)
+
+	if not has_los and lost_sight_timer > 5.5:
+		target = null
+		burst_remaining = 0
+		_choose_patrol_target()
 
 func _fire_at_target(distance: float) -> void:
 	if burst_remaining <= 0:
@@ -291,7 +347,10 @@ func _choose_patrol_target() -> void:
 	)
 
 func receive_squad_alert(new_target: Node3D) -> void:
+	if target == null or not is_instance_valid(target):
+		reaction_timer = rng.randf_range(0.18, 0.42)
 	target = new_target
+	last_seen_position = new_target.global_position
 
 func apply_damage(amount: float, _hit_position := Vector3.ZERO, direction := Vector3.ZERO, source = null) -> void:
 	if dead:
@@ -332,19 +391,30 @@ func _find_cover_target() -> Vector3:
 		return Vector3.ZERO
 	var best := Vector3.ZERO
 	var best_score := INF
+	var player_eye := target.global_position + Vector3.UP * 1.1
 	for candidate in get_tree().get_nodes_in_group("combat_cover"):
 		if not candidate is Node3D:
 			continue
 		var cover := candidate as Node3D
 		var distance := global_position.distance_to(cover.global_position)
-		if distance < 2.5 or distance > 22.0:
+		if distance < 2.5 or distance > 24.0:
 			continue
 		var from_player := cover.global_position - target.global_position
 		from_player.y = 0.0
 		if from_player.length_squared() < 0.01:
 			continue
-		var hide_position := cover.global_position + from_player.normalized() * 1.4
-		var score := distance + target.global_position.distance_to(hide_position) * 0.04
+		var hide_position := cover.global_position + from_player.normalized() * 1.55
+		hide_position.y = global_position.y
+
+		var query := PhysicsRayQueryParameters3D.create(player_eye, hide_position + Vector3.UP * 1.0)
+		query.exclude = [target.get_rid()] if target is CollisionObject3D else []
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if hit.is_empty() or hit.get("collider") != cover:
+			continue
+
+		var travel_cost := distance
+		var exposure_cost := target.global_position.distance_to(hide_position) * 0.025
+		var score := travel_cost + exposure_cost
 		if score < best_score:
 			best_score = score
 			best = hide_position
