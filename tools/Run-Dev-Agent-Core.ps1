@@ -469,6 +469,14 @@ function Invoke-FHValidation {
     }
 
     $diagnostics = Get-FHDiagnostics -Steps @($steps) -TestRoot $TestPath -EnginePath $Engine.Root
+
+    if (-not $buildPass -and $diagnostics -match "Could not find NetFxSDK install dir") {
+        $failedStage = "environment"
+        $diagnostics += [Environment]::NewLine + [Environment]::NewLine +
+            "Missing machine prerequisite: .NET Framework 4.8 SDK/developer tools. " +
+            "Run tools\Install-Unreal-Prereqs.ps1 once from the Far Horizon repo, then leave the supervisor running."
+    }
+
     $stepSummary = @()
     foreach ($step in $steps) {
         $stepSummary += @{
