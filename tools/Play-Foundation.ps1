@@ -96,19 +96,62 @@ New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 if ($needsGodotImport) {
     Write-Host "Rebuilding Godot import/script-class cache..." -ForegroundColor Cyan
     $importLog = Join-Path $runtimeDir "godot-import.log"
-    Remove-Item $importLog -Force -ErrorAction SilentlyContinue
+    $importStdout = Join-Path $runtimeDir "godot-import-stdout.log"
+    $importStderr = Join-Path $runtimeDir "godot-import-stderr.log"
+    Remove-Item $importLog, $importStdout, $importStderr -Force -ErrorAction SilentlyContinue
 
-    # Godot's --import mode waits for resource import/file scanning to finish
-    # before quitting. Do not use --quit-after here: that can abort the initial
-    # filesystem scan and leave the generated global-script-class cache incomplete.
-    & $godot --headless --import --path $Repo --log-file $importLog
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Godot import bootstrap failed. Last import log lines:" -ForegroundColor Red
-        if (Test-Path $importLog) {
-            Get-Content $importLog -Tail 120
+    # Godot 4.7 on Windows can complete a first clean headless import and then
+    # remain alive instead of returning. Run it under a watchdog. Once the
+    # generated global-class cache exists and editor layout has been reached,
+    # the imports needed by the runtime are complete.
+    $importArgs = @("--headless", "--import", "--path", $Repo, "--log-file", $importLog)
+    $importProcess = Start-Process -FilePath $godot -ArgumentList $importArgs -WorkingDirectory $Repo -RedirectStandardOutput $importStdout -RedirectStandardError $importStderr -PassThru
+
+    $cacheFile = Join-Path $Repo ".godot\global_script_class_cache.cfg"
+    $deadline = (Get-Date).AddMinutes(3)
+    $importReady = $false
+
+    while ((Get-Date) -lt $deadline) {
+        $importProcess.Refresh()
+        $stdoutText = ""
+        if (Test-Path $importStdout) {
+            $stdoutText = Get-Content $importStdout -Raw -ErrorAction SilentlyContinue
         }
-        throw "Godot import bootstrap failed with exit code $LASTEXITCODE."
+
+        $scanReachedEditorLayout = $stdoutText -match "loading_editor_layout"
+        $cacheReady = Test-Path $cacheFile
+        if ($cacheReady -and $scanReachedEditorLayout) {
+            $importReady = $true
+            break
+        }
+
+        if ($importProcess.HasExited) {
+            $importReady = $cacheReady
+            break
+        }
+        Start-Sleep -Milliseconds 500
     }
+
+    $importProcess.Refresh()
+    if (-not $importProcess.HasExited) {
+        if ($importReady) {
+            Write-Host "Godot import finished but its headless process stayed alive; closing bootstrap process..." -ForegroundColor DarkYellow
+            Stop-Process -Id $importProcess.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 400
+        } else {
+            Stop-Process -Id $importProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not $importReady) {
+        Write-Host "Godot import bootstrap did not produce a usable script-class cache." -ForegroundColor Red
+        if (Test-Path $importStdout) { Get-Content $importStdout -Tail 120 }
+        if (Test-Path $importStderr) { Get-Content $importStderr -Tail 120 }
+        if (Test-Path $importLog) { Get-Content $importLog -Tail 120 }
+        throw "Godot import bootstrap failed."
+    }
+
+    Write-Host "Godot import/script-class cache is ready." -ForegroundColor Green
 }
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
