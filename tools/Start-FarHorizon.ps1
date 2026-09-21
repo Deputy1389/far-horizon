@@ -18,13 +18,19 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not update Far Horizon from GitHub."
 }
 
-$epicInstaller = Join-Path $PSScriptRoot "Install-Epic-FPS-Foundation.ps1"
-if (Test-Path $epicInstaller) {
-    Write-Host ""
-    Write-Host "Checking real Epic FPS character / weapon / AI foundation..." -ForegroundColor Cyan
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $epicInstaller
-    if ($LASTEXITCODE -ne 0) {
-        throw "Epic FPS foundation setup failed. Read the status above."
+# Remove the abandoned whole-template copy experiment. Those Blueprints depend
+# on template-specific project context and can crash when loaded inside Far Horizon.
+foreach ($relative in @(
+    "Content\FirstPerson",
+    "Content\Variant_Horror",
+    "Content\Variant_Shooter",
+    "Content\__ExternalActors__",
+    "Content\__ExternalObjects__"
+)) {
+    $path = Join-Path $RepoRoot $relative
+    if (Test-Path $path) {
+        Write-Host ("Cleaning obsolete Epic template copy: {0}" -f $relative) -ForegroundColor DarkGray
+        Remove-Item -Recurse -Force $path
     }
 }
 
