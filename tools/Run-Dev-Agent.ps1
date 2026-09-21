@@ -155,18 +155,26 @@ $runtimeBase = if ($env:LOCALAPPDATA) {
     Join-Path ([System.IO.Path]::GetTempPath()) "FarHorizonDevAgent"
 }
 $supervisorRuntime = Join-Path $runtimeBase "supervisor"
+$resultsJson = Join-Path (Join-Path $runtimeBase "results-clone") "latest.json"
 New-Item -ItemType Directory -Force -Path $supervisorRuntime | Out-Null
 
 Write-Host ""
-Write-Host "Far Horizon Unreal dev-agent supervisor"
-Write-Host "Watching:      $Remote/$Branch"
-Write-Host "Poll interval: $PollSeconds seconds"
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "FAR HORIZON BACKGROUND TESTER" -ForegroundColor Cyan
+Write-Host "============================================================" -ForegroundColor Cyan
+Write-Host "Leave this window open."
 Write-Host ""
-Write-Host "The validation core is reloaded from each new commit."
-Write-Host "Leave this window open. Press Ctrl+C to stop."
+Write-Host "What the messages mean:"
+Write-Host "  TESTING = new code is being checked" -ForegroundColor Yellow
+Write-Host "  READY   = latest code passed and is playable" -ForegroundColor Green
+Write-Host "  FAILED  = testing finished and found a problem; NOT stuck" -ForegroundColor Red
+Write-Host "  IDLE    = nothing to do; waiting for new code" -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "Press Ctrl+C only when you intentionally want to stop the tester."
 Write-Host ""
 
 $lastSha = ""
+$lastIdleMessage = Get-Date
 
 while ($true) {
     try {
@@ -175,20 +183,67 @@ while ($true) {
         if ($sha -ne $lastSha) {
             $shortSha = $sha.Substring(0, [Math]::Min(12, $sha.Length))
             Write-Host ""
-            Write-Host "New commit: $shortSha"
-            Write-Host "Loading runner core from that commit..."
+            Write-Host "------------------------------------------------------------" -ForegroundColor Yellow
+            Write-Host "STATUS: TESTING NEW CODE" -ForegroundColor Yellow
+            Write-Host "The newest changes are being built and tested."
+            Write-Host "You do not need to do anything."
+            Write-Host "------------------------------------------------------------" -ForegroundColor Yellow
 
             $exitCode = Invoke-FHCoreForCommit -Sha $sha -RuntimeDir $supervisorRuntime
-            Write-Host "Runner core exited with code $exitCode for $shortSha."
+
+            $reportedStatus = $null
+            $reportedStage = $null
+            $reportedSha = $null
+
+            if (Test-Path $resultsJson) {
+                try {
+                    $result = Get-Content $resultsJson -Raw | ConvertFrom-Json
+                    $reportedStatus = [string]$result.status
+                    $reportedStage = [string]$result.failedStage
+                    $reportedSha = [string]$result.sha
+                } catch {
+                }
+            }
+
+            if ($reportedSha -eq $sha -and $reportedStatus -eq "PASS") {
+                Write-Host ""
+                Write-Host "============================================================" -ForegroundColor Green
+                Write-Host "STATUS: READY TO PLAY" -ForegroundColor Green
+                Write-Host "Latest code passed build + tests + boot."
+                Write-Host "The tester is now IDLE and watching for future changes."
+                Write-Host "============================================================" -ForegroundColor Green
+            } elseif ($reportedSha -eq $sha -and $reportedStatus -eq "FAIL") {
+                $stageText = if ([string]::IsNullOrWhiteSpace($reportedStage)) { "unknown" } else { $reportedStage }
+                Write-Host ""
+                Write-Host "============================================================" -ForegroundColor Red
+                Write-Host "STATUS: FAILED - NOT STUCK" -ForegroundColor Red
+                Write-Host "Testing finished and found a problem."
+                Write-Host "Failed stage: $stageText"
+                Write-Host "Nothing is still compiling."
+                Write-Host "Leave this window open; it will test the next fix automatically."
+                Write-Host "============================================================" -ForegroundColor Red
+            } else {
+                Write-Host ""
+                Write-Host "STATUS: TEST FINISHED, RESULT NOT PUBLISHED" -ForegroundColor Magenta
+                Write-Host "The test process ended, but the result file was not updated."
+                Write-Host "This may need attention if it repeats."
+            }
 
             $lastSha = $sha
+            $lastIdleMessage = Get-Date
 
             if ($RunOnce) {
                 break
             }
+        } elseif (((Get-Date) - $lastIdleMessage).TotalSeconds -ge 60) {
+            Write-Host "STATUS: IDLE - watching for new code. Nothing is stuck." -ForegroundColor DarkGray
+            $lastIdleMessage = Get-Date
         }
     } catch {
-        Write-Warning $_.Exception.Message
+        Write-Host ""
+        Write-Host "STATUS: TESTER PROBLEM" -ForegroundColor Magenta
+        Write-Host $_.Exception.Message
+        Write-Host "The supervisor will retry automatically." -ForegroundColor Magenta
 
         if ($RunOnce) {
             throw
