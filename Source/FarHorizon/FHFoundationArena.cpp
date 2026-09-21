@@ -127,14 +127,18 @@ void AFHFoundationArena::SpawnLighting()
         FVector::ZeroVector,
         FRotator(-34.0f, -42.0f, 0.0f));
 
-    if (Sun && Sun->GetLightComponent())
+    if (Sun)
     {
-        Sun->GetLightComponent()->SetMobility(EComponentMobility::Movable);
-        Sun->GetLightComponent()->SetIntensity(7.5f);
-        Sun->GetLightComponent()->SetLightColor(FLinearColor(1.0f, 0.82f, 0.62f));
-        Sun->GetLightComponent()->SetAtmosphereSunLight(true);
-        Sun->GetLightComponent()->SetAtmosphereSunLightIndex(0);
-        Sun->GetLightComponent()->SetDynamicShadowDistanceMovableLight(12000.0f);
+        if (UDirectionalLightComponent* SunComponent =
+            Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
+        {
+            SunComponent->SetMobility(EComponentMobility::Movable);
+            SunComponent->SetIntensity(7.5f);
+            SunComponent->SetLightColor(FLinearColor(1.0f, 0.82f, 0.62f));
+            SunComponent->SetAtmosphereSunLight(true);
+            SunComponent->SetAtmosphereSunLightIndex(0);
+            SunComponent->SetDynamicShadowDistanceMovableLight(12000.0f);
+        }
     }
 
     ASkyLight* Sky = World->SpawnActor<ASkyLight>();
