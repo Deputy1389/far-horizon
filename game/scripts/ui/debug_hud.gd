@@ -15,6 +15,8 @@ var objective_label := Label.new()
 var interaction_label := Label.new()
 var crosshair := Label.new()
 var damage_overlay := ColorRect.new()
+var redeploy_overlay := ColorRect.new()
+var redeploy_label := Label.new()
 
 var event_timer := 0.0
 var hit_marker_timer := 0.0
@@ -46,6 +48,20 @@ func _ready() -> void:
 	damage_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	damage_overlay.color = Color(0.42, 0.0, 0.0, 0.0)
 	add_child(damage_overlay)
+
+	redeploy_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	redeploy_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	redeploy_overlay.color = Color(0.02, 0.015, 0.012, 0.82)
+	redeploy_overlay.visible = false
+	add_child(redeploy_overlay)
+
+	redeploy_label.text = "DEFEATED\nREDEPLOYING..."
+	redeploy_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	redeploy_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	redeploy_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	redeploy_label.add_theme_font_size_override("font_size", 30)
+	redeploy_label.visible = false
+	add_child(redeploy_label)
 
 	crosshair.text = "+"
 	crosshair.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -195,6 +211,17 @@ func _update_interaction_prompt() -> void:
 		nearest_distance = distance
 		prompt = candidate_prompt
 	interaction_label.text = prompt
+
+func show_redeploy() -> void:
+	redeploy_overlay.visible = true
+	redeploy_label.visible = true
+	crosshair.visible = false
+
+func hide_redeploy() -> void:
+	redeploy_overlay.visible = false
+	redeploy_label.visible = false
+	crosshair.visible = true
+
 
 func confirm_kill() -> void:
 	kill_marker_timer = 0.18
