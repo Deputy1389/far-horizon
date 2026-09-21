@@ -1,18 +1,18 @@
 ﻿{
     "branch":  "unreal/foundation-v0.1",
-    "diagnostics":  "\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\Source\\FarHorizon\\Tests\\FHAutomationTests.cpp(4,1): fatal error C1083: Cannot open include file: \u0027FHPlanetMath.h\u0027: No such file or directory",
-    "sha":  "7d90ab2c0e90d682e5cd381aed862e8d5a01d92f",
+    "diagnostics":  "Using bundled DotNet SDK version: 10.0 win-x64\r\nRunning UnrealBuildTool: dotnet \"..\\..\\Engine\\Binaries\\DotNET\\UnrealBuildTool\\UnrealBuildTool.dll\" -Target=\"FarHorizonEditor Win64 Development\" -Project=\"\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree\\FarHorizon.uproject\" -WaitMutex -NoHotReloadFromIDE\r\nLog file: \u003cUSER_HOME\u003e\\AppData\\Local\\UnrealBuildTool\\Log.txt\r\nDetermining max actions to execute in parallel (8 physical cores, 16 logical cores)\r\n  Executing up to 8 processes, one per physical core\r\nUsing \u0027git status\u0027 to determine working set for adaptive non-unity build (\u003cUSER_HOME\u003e\\AppData\\Local\\FarHorizonDevAgent\\test-worktree).\r\nUbaServer - Listening on 0.0.0.0:1345\r\nAvailable x64 toolchains (1):\r\n * C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.51.36231\r\n    (Family=14.51.36231, FamilyRank=2, Version=14.51.36246, HostArchitecture=x64, ReleaseChannel=Latest, Architecture=x64)\r\nVisual Studio compiler version 14.51.36246 is newer than latest preferred version 14.50.35717. Please use caution as this compiler has not been heavily tested\r\nBuilding FarHorizonEditor...\r\n===== Toolchain Information =====\r\nUsing ISPC compiler (\u003cENGINE_ROOT\u003e\\Engine\\Source\\ThirdParty\\Intel\\ISPC\\bin\\Windows\\ispc.exe)\r\n  Intel(r) Implicit SPMD Program Compiler (Intel(r) ISPC), 1.24.0 (build commit  @ 20250404, LLVM 18.1.2) \r\nUsing Visual Studio 14.51.36246 toolchain (C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.51.36231) and Windows 10.0.26100.0 SDK (C:\\Program Files (x86)\\Windows Kits\\10).\r\nWarning: Visual Studio compiler 14.51.36246 is not a preferred version\r\n=================================\r\nUsing Unreal Build Accelerator local executor to run 4 action(s)\r\n  CPU 8 physical cores, 16 logical cores\r\n  Memory 47.93 GB physical, 45.23 GB/71.93 GB committed\r\n  UBA Storage capacity 40 GB\r\n[1/4] Compile [x64] FHAutomationTests.cpp\r\n[2/4] Link [x64] UnrealEditor-FarHorizon.lib\r\n[3/4] Link [x64] UnrealEditor-FarHorizon.dll\r\n[4/4] WriteMetadata FarHorizonEditor.target [NoUba]\r\nTotal time in Unreal Build Accelerator local executor: 18.57 seconds\r\nOutput binary: \u003cENGINE_ROOT\u003e\\Engine\\Binaries\\Win64\\UnrealEditor.exe\r\nResult: Succeeded\r\nTotal execution time: 21.28 seconds\r\nTrace written to file \u003cUSER_HOME\u003e\\AppData\\Local\\UnrealBuildTool\\Trace.uba with size 6.8kb",
+    "sha":  "b146032d03d57cad962667a82408ad2e53432391",
     "failedStage":  "build",
     "engineVersion":  "5.8",
-    "shortSha":  "7d90ab2c0e90",
+    "shortSha":  "b146032d03d5",
     "status":  "FAIL",
     "steps":  [
                   {
                       "exitCode":  null,
                       "name":  "build",
-                      "durationSeconds":  129.5,
+                      "durationSeconds":  21.8,
                       "timedOut":  false
                   }
               ],
-    "testedAtUtc":  "2026-09-21T06:03:50.7374223Z"
+    "testedAtUtc":  "2026-09-21T06:07:02.9660209Z"
 }
