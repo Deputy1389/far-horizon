@@ -454,7 +454,17 @@ function Invoke-FHValidation {
     $build = Invoke-FHLoggedProcess @buildParams
     $steps.Add($build)
 
-    $buildPass = ($build.ExitCode -eq 0)
+    $buildFailure = Test-FHLogFailure `
+        -Paths @($build.StdOut, $build.StdErr) `
+        -Patterns @(
+            "error C[0-9]{4}",
+            "fatal error",
+            "Result: Failed",
+            "BUILD FAILED",
+            "error MSB[0-9]+",
+            "error : "
+        )
+    $buildPass = ($build.ExitCode -eq 0 -and -not $buildFailure)
     $automationPass = $false
     $bootPass = $false
 
