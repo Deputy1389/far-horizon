@@ -51,12 +51,12 @@ AFHPlayerCharacter::AFHPlayerCharacter()
 
     auto AddWeaponPart = [this](
         const TCHAR* Name,
-        UStaticMesh* Mesh,
+        UStaticMesh* MeshAsset,
         const FVector& Location,
         const FVector& Scale,
         const FRotator& Rotation = FRotator::ZeroRotator)
     {
-        if (!Mesh)
+        if (!MeshAsset)
         {
             return;
         }
@@ -64,7 +64,7 @@ AFHPlayerCharacter::AFHPlayerCharacter()
         UStaticMeshComponent* Part =
             CreateDefaultSubobject<UStaticMeshComponent>(Name);
         Part->SetupAttachment(WeaponRoot);
-        Part->SetStaticMesh(Mesh);
+        Part->SetStaticMesh(MeshAsset);
         Part->SetRelativeLocation(Location);
         Part->SetRelativeScale3D(Scale);
         Part->SetRelativeRotation(Rotation);
