@@ -1019,7 +1019,11 @@ def main() -> int:
     weapons: dict[str, dict[str, Any]] = {}
     weapon_failures: dict[str, str] = {}
     try:
-        from convert_swg_mesh import convert_from_inventory as convert_weapon_from_inventory
+        from convert_swg_mesh import (
+            convert_from_inventory as convert_weapon_from_inventory,
+            extract_shader_texture_paths,
+            parse_static_mesh,
+        )
 
         weapon_root = output_root / "weapon"
         for role in WEAPON_MESH_RULES:
@@ -1028,7 +1032,8 @@ def main() -> int:
                 weapon_failures[role] = "no suitable SWG weapon .msh candidate found"
                 print(f"WEAPON miss {role}: {weapon_failures[role]}")
                 continue
-            weapon_gltf = weapon_root / f"{role}.gltf"
+
+            weapon_gltf = weapon_root / role / f"{role}.gltf"
             weapon_bin = weapon_gltf.with_suffix(".bin")
             converted_entry, weapon_summary = convert_weapon_from_inventory(
                 inventory,
@@ -1036,18 +1041,83 @@ def main() -> int:
                 weapon_bin,
                 preferred_virtual_path=weapon_entry.virtual_path,
             )
+
+            source_submeshes = parse_static_mesh(
+                decode_tre_entry(converted_entry.archive, converted_entry.metadata)
+            )
+            shader_bindings: dict[str, list[str]] = {}
+            shader_texture_paths: set[str] = set()
+            for submesh in source_submeshes:
+                shader_entry = path_index.get(submesh.shader.lower())
+                if shader_entry is None:
+                    shader_bindings[submesh.shader] = []
+                    continue
+                shader_paths = extract_shader_texture_paths(
+                    decode_tre_entry(shader_entry.archive, shader_entry.metadata)
+                )
+                shader_bindings[submesh.shader] = shader_paths
+                shader_texture_paths.update(shader_paths)
+
+            weapon_texture_root = weapon_root / role / "texture"
+            weapon_texture_root.mkdir(parents=True, exist_ok=True)
+            (weapon_texture_root / ".gdignore").write_text("", encoding="utf-8")
+            weapon_godot_texture_root = output_root / "godot" / "weapon" / role
+            weapon_godot_texture_root.mkdir(parents=True, exist_ok=True)
+            weapon_textures: dict[str, dict[str, Any]] = {}
+            failed_texture_paths: dict[str, str] = {}
+            for shader_texture_path in sorted(shader_texture_paths):
+                texture_entry = path_index.get(shader_texture_path.lower())
+                if texture_entry is None:
+                    failed_texture_paths[shader_texture_path] = "shader DDS path not present in inventory"
+                    continue
+                destination = weapon_texture_root / Path(shader_texture_path).name
+                loose_path = copy_loose(source, texture_entry.virtual_path, destination)
+                source_kind = "loose"
+                if loose_path is None:
+                    source_kind = "TRE"
+                    ok, error = extract_from_tre(texture_entry.archive, texture_entry.metadata, destination)
+                    if not ok:
+                        failed_texture_paths[shader_texture_path] = error or "TRE extraction failed"
+                        destination.unlink(missing_ok=True)
+                        continue
+                normalize_dds_file_for_godot(destination)
+                if not is_valid_dds_file(destination):
+                    failed_texture_paths[shader_texture_path] = "decoded shader reference did not have a valid DDS header"
+                    destination.unlink(missing_ok=True)
+                    continue
+
+                godot_url = ""
+                try:
+                    godot_destination = weapon_godot_texture_root / f"{Path(shader_texture_path).stem}.png"
+                    dds_to_png_file(destination, godot_destination)
+                    godot_url = f"./assets/local-swg/godot/weapon/{role}/{godot_destination.name}"
+                except (OSError, DDSDecodeError, ValueError) as exc:
+                    failed_texture_paths[shader_texture_path] = f"Godot PNG conversion failed: {exc}"
+
+                descriptor = build_manifest_asset(
+                    texture_entry,
+                    f"./assets/local-swg/weapon/{role}/texture/{destination.name}",
+                )
+                if godot_url:
+                    descriptor["godotUrl"] = godot_url
+                descriptor["sourceKind"] = source_kind
+                weapon_textures[shader_texture_path] = descriptor
+
             weapons[role] = {
-                "url": f"./assets/local-swg/weapon/{weapon_gltf.name}",
-                "bin": f"./assets/local-swg/weapon/{weapon_bin.name}",
+                "url": f"./assets/local-swg/weapon/{role}/{weapon_gltf.name}",
+                "bin": f"./assets/local-swg/weapon/{role}/{weapon_bin.name}",
                 "archive": converted_entry.archive.name,
                 "archivePath": str(converted_entry.archive),
                 "archiveRank": converted_entry.archive_rank,
                 "virtualPath": converted_entry.virtual_path,
+                "shaderBindings": shader_bindings,
+                "textures": weapon_textures,
+                "failedTextures": failed_texture_paths,
                 **weapon_summary,
             }
             print(
                 f"WEAPON {role:<14} {converted_entry.archive.name} :: {converted_entry.virtual_path} "
-                f"({weapon_summary['vertices']:,} vertices)"
+                f"({weapon_summary['vertices']:,} vertices, {len(weapon_textures)} shader DDS textures)"
             )
     except Exception as exc:
         for role in WEAPON_MESH_RULES:
