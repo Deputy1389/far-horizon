@@ -5,7 +5,7 @@ extends Node3D
 @export var planet_radius := 6_000_000.0
 @export var chunk_size := 220.0
 @export var chunk_resolution := 17
-@export var chunk_radius := 5
+@export var chunk_radius := 2
 
 var origin_service: FloatingOrigin
 var player: Node3D
@@ -146,13 +146,14 @@ func _build_chunk(key: Vector2i) -> Node3D:
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	root.add_child(mesh_instance)
 
-	var body := StaticBody3D.new()
-	body.collision_layer = 1
-	body.collision_mask = 1
-	var collision := CollisionShape3D.new()
-	collision.shape = mesh.create_trimesh_shape()
-	body.add_child(collision)
-	root.add_child(body)
+	if DisplayServer.get_name() != "headless":
+		var body := StaticBody3D.new()
+		body.collision_layer = 1
+		body.collision_mask = 1
+		var collision := CollisionShape3D.new()
+		collision.shape = mesh.create_trimesh_shape()
+		body.add_child(collision)
+		root.add_child(body)
 	_add_chunk_dressing(root, key, start_x, start_z)
 	return root
 
